@@ -1,0 +1,361 @@
+// NewsroomLab AI — Prisma Schema
+// PostgreSQL via Supabase
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  LECTURER
+  STUDENT
+}
+
+enum CourseRole {
+  LECTURER
+  STUDENT
+  TA
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  INVITED
+  DROPPED
+}
+
+enum StoryType {
+  HARD_NEWS
+  FEATURE
+  PROFILE
+  OBITUARY
+  INVESTIGATIVE
+  PRESS_RELEASE
+  COURTS
+  PARLIAMENT
+  BUSINESS
+  SPORTS
+  DISASTER
+  ONLINE_UPDATE
+}
+
+enum SubmissionStatus {
+  DRAFT
+  PLAN_SUBMITTED
+  SUBMITTED_V1
+  AI_REVIEWED
+  REVISING
+  SUBMITTED_FINAL
+  GRADED
+  RESUBMIT_REQUESTED
+}
+
+enum SourceType {
+  URL
+  INTERVIEW
+  DOCUMENT
+  OBSERVATION
+  DATASET
+  OTHER
+}
+
+enum Confidence {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum EditorType {
+  COPY
+  FACTCHECK
+  ETHICS
+  FRAMING
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// ─── MODELS ──────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      UserRole @default(STUDENT)
+  avatarUrl String?  @map("avatar_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  courses     Course[]           @relation("CourseLecturer")
+  enrollments CourseEnrollment[]
+  submissions Submission[]
+  peerReviews PeerReview[]
+  auditLogs   AuditLog[]
+  grades      Grade[]            @relation("GradeGrader")
+
+  @@map("users")
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  title       String
+  code        String?
+  institution String?
+  semester    String
+  description String?
+  timezone    String   @default("Africa/Nairobi")
+  lecturerId  String   @map("lecturer_id")
+  isArchived  Boolean  @default(false) @map("is_archived")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  lecturer    User               @relation("CourseLecturer", fields: [lecturerId], references: [id])
+  enrollments CourseEnrollment[]
+  assignments Assignment[]
+  rubrics     Rubric[]
+
+  @@map("courses")
+}
+
+model CourseEnrollment {
+  id           String           @id @default(cuid())
+  courseId     String           @map("course_id")
+  userId       String           @map("user_id")
+  roleInCourse CourseRole       @default(STUDENT) @map("role_in_course")
+  status       EnrollmentStatus @default(INVITED)
+  joinedAt     DateTime         @default(now()) @map("joined_at")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, userId])
+  @@map("course_enrollments")
+}
+
+model Rubric {
+  id         String     @id @default(cuid())
+  courseId   String?    @map("course_id")
+  name       String
+  categories Json
+  isTemplate Boolean    @default(false) @map("is_template")
+  storyType  StoryType? @map("story_type")
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  course      Course?      @relation(fields: [courseId], references: [id])
+  assignments Assignment[]
+
+  @@map("rubrics")
+}
+
+model Assignment {
+  id                 String    @id @default(cuid())
+  courseId           String    @map("course_id")
+  title              String
+  storyType          StoryType @map("story_type")
+  brief              String
+  scenario           String?
+  constraints        Json
+  dueAt              DateTime  @map("due_at")
+  requiredComponents Json      @map("required_components")
+  rubricId           String?   @map("rubric_id")
+  aiModules          Json      @map("ai_modules")
+  verificationRules  Json      @map("verification_rules")
+  isPublished        Boolean   @default(false) @map("is_published")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  rubric      Rubric?      @relation(fields: [rubricId], references: [id])
+  submissions Submission[]
+
+  @@map("assignments")
+}
+
+model Submission {
+  id               String           @id @default(cuid())
+  assignmentId     String           @map("assignment_id")
+  studentId        String           @map("student_id")
+  status           SubmissionStatus @default(DRAFT)
+  currentVersionId String?          @map("current_version_id")
+  submittedAt      DateTime?        @map("submitted_at")
+  gradedAt         DateTime?        @map("graded_at")
+  overallScore     Float?           @map("overall_score")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  assignment        Assignment          @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student           User                @relation(fields: [studentId], references: [id])
+  versions          SubmissionVersion[]
+  reportingPlan     ReportingPlan?
+  verificationItems VerificationItem[]
+  attachments       Attachment[]
+  aiReviews         AiReview[]
+  reflection        StudentReflection?
+  aiDisclosure      AiDisclosure?
+  grade             Grade?
+  peerReviews       PeerReview[]
+
+  @@unique([assignmentId, studentId])
+  @@map("submissions")
+}
+
+model SubmissionVersion {
+  id            String   @id @default(cuid())
+  submissionId  String   @map("submission_id")
+  versionNumber Int      @map("version_number")
+  content       String
+  wordCount     Int      @default(0) @map("word_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  aiReviews  AiReview[]
+
+  @@unique([submissionId, versionNumber])
+  @@map("submission_versions")
+}
+
+model ReportingPlan {
+  id                 String   @id @default(cuid())
+  submissionId       String   @unique @map("submission_id")
+  storyAngle         String?  @map("story_angle")
+  keyQuestions        Json     @map("key_questions")
+  sourcesToSeek      Json     @map("sources_to_seek")
+  documentsToConsult Json     @map("documents_to_consult")
+  risksUnknowns      String?  @map("risks_unknowns")
+  timeline           String?
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("reporting_plans")
+}
+
+model VerificationItem {
+  id                      String     @id @default(cuid())
+  submissionId            String     @map("submission_id")
+  claim                   String
+  evidence                String
+  sourceType              SourceType @map("source_type")
+  sourceRef               String     @map("source_ref")
+  confidence              Confidence @default(MEDIUM)
+  needsSecondConfirmation Boolean    @default(false) @map("needs_second_confirmation")
+  secondSourceRef         String?    @map("second_source_ref")
+  notes                   String?
+  createdAt               DateTime   @default(now()) @map("created_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("verification_items")
+}
+
+model Attachment {
+  id           String   @id @default(cuid())
+  submissionId String   @map("submission_id")
+  fileUrl      String   @map("file_url")
+  fileType     String   @map("file_type")
+  fileName     String   @map("file_name")
+  description  String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("attachments")
+}
+
+model AiReview {
+  id           String     @id @default(cuid())
+  submissionId String     @map("submission_id")
+  versionId    String     @map("version_id")
+  editorType   EditorType @map("editor_type")
+  output       Json
+  modelName    String     @map("model_name")
+  tokensIn     Int        @default(0) @map("tokens_in")
+  tokensOut    Int        @default(0) @map("tokens_out")
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  submission Submission        @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  version    SubmissionVersion @relation(fields: [versionId], references: [id])
+
+  @@map("ai_reviews")
+}
+
+model StudentReflection {
+  id             String   @id @default(cuid())
+  submissionId   String   @unique @map("submission_id")
+  reflectionText String   @map("reflection_text")
+  framingAnswers Json?    @map("framing_answers")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("student_reflections")
+}
+
+model AiDisclosure {
+  id                    String   @id @default(cuid())
+  submissionId          String   @unique @map("submission_id")
+  toolsUsed             Json     @map("tools_used")
+  whatUsedFor           String   @map("what_used_for")
+  whatRejected          String?  @map("what_rejected")
+  verificationStatement String   @map("verification_statement")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("ai_disclosures")
+}
+
+model Grade {
+  id               String   @id @default(cuid())
+  submissionId     String   @unique @map("submission_id")
+  graderId         String   @map("grader_id")
+  rubricScores     Json     @map("rubric_scores")
+  lecturerComments String?  @map("lecturer_comments")
+  privateNotes     String?  @map("private_notes")
+  totalScore       Float    @map("total_score")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  grader     User       @relation("GradeGrader", fields: [graderId], references: [id])
+
+  @@map("grades")
+}
+
+model PeerReview {
+  id                String   @id @default(cuid())
+  submissionId      String   @map("submission_id")
+  reviewerStudentId String   @map("reviewer_student_id")
+  rubricScores      Json     @map("rubric_scores")
+  comments          String?
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  submission Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  reviewer   User       @relation(fields: [reviewerStudentId], references: [id])
+
+  @@map("peer_reviews")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?  @map("user_id")
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
