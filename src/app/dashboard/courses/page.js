@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { BookOpen, Users, ClipboardList, ArrowRight, Plus, Archive, GraduationCap, CheckCircle2, ChevronRight } from "lucide-react"
+import { BookOpen, Users, ClipboardList, ArrowRight, Plus, Archive, GraduationCap, CheckCircle2, ChevronRight, Eye, EyeOff, Pencil, Settings, MoreVertical, Globe, Lock } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/providers/auth-provider"
 import { demoCourses } from "@/lib/demo-data"
 import { courseTemplates, courseTemplateCodes, getCourseTemplate } from "@/lib/templates"
@@ -25,12 +26,45 @@ export default function CoursesPage() {
   const [step, setStep] = useState(1) // 1 = pick template, 2 = configure
   const [courses, setCourses] = useState(demoCourses)
 
-  const activeCourses = courses.filter((c) => !c.isArchived)
-  const archivedCourses = courses.filter((c) => c.isArchived)
+  // Filter based on role
+  // Lecturers see all courses, students only see published courses
+  const visibleCourses = isLecturer 
+    ? courses 
+    : courses.filter((c) => c.isPublished)
+  
+  const activeCourses = visibleCourses.filter((c) => !c.isArchived)
+  const archivedCourses = visibleCourses.filter((c) => c.isArchived)
+  
+  // Count published/draft for lecturers
+  const publishedCount = courses.filter(c => c.isPublished && !c.isArchived).length
+  const draftCount = courses.filter(c => !c.isPublished && !c.isArchived).length
 
   const handleSelectTemplate = (code) => {
     setSelectedTemplate(getCourseTemplate(code))
     setStep(2)
+  }
+
+  const handleTogglePublish = (courseId) => {
+    setCourses(prev => prev.map(c => {
+      if (c.id === courseId) {
+        const newStatus = !c.isPublished
+        toast.success(newStatus 
+          ? `"${c.title}" is now visible to students` 
+          : `"${c.title}" is now hidden from students`)
+        return { ...c, isPublished: newStatus }
+      }
+      return c
+    }))
+  }
+
+  const handleArchiveCourse = (courseId) => {
+    setCourses(prev => prev.map(c => {
+      if (c.id === courseId) {
+        toast.success(`"${c.title}" has been archived`)
+        return { ...c, isArchived: true, isPublished: false }
+      }
+      return c
+    }))
   }
 
   const handleCreateCourse = (e) => {
@@ -210,42 +244,130 @@ export default function CoursesPage() {
 
       {/* Active Courses */}
       <div>
-        <h2 className="text-lg font-semibold mb-4">Active Courses</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold">
+            {isLecturer ? "All Courses" : "Available Courses"}
+          </h2>
+          {isLecturer && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="default" className="gap-1">
+                <Globe className="h-3 w-3" />
+                {publishedCount} Published
+              </Badge>
+              {draftCount > 0 && (
+                <Badge variant="secondary" className="gap-1">
+                  <Lock className="h-3 w-3" />
+                  {draftCount} Draft
+                </Badge>
+              )}
+            </div>
+          )}
+        </div>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {activeCourses.map((course) => (
-            <Link key={course.id} href={`/dashboard/courses/${course.id}`}>
-              <Card className="h-full transition-all hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-700 cursor-pointer">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <Badge variant="secondary" className="text-xs">
+            <Card key={course.id} className={`h-full transition-all hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-700 ${!course.isPublished ? 'border-dashed opacity-80' : ''}`}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs font-mono">
                       {course.code}
                     </Badge>
-                    <Badge variant="outline" className="text-xs">
-                      {course.semester}
-                    </Badge>
+                    {course.series && (
+                      <Badge variant="outline" className="text-xs">
+                        {course.series} Level
+                      </Badge>
+                    )}
                   </div>
-                  <CardTitle className="mt-3 text-lg">{course.title}</CardTitle>
-                  <CardDescription className="line-clamp-2">
-                    {course.description}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <div className="flex items-center gap-1">
-                      <Users className="h-3.5 w-3.5" />
-                      {course.studentCount} students
+                  <div className="flex items-center gap-1">
+                    {isLecturer && (
+                      <>
+                        {course.isPublished ? (
+                          <Badge variant="default" className="text-xs gap-1">
+                            <Globe className="h-3 w-3" />
+                            Published
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs gap-1">
+                            <Lock className="h-3 w-3" />
+                            Draft
+                          </Badge>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleTogglePublish(course.id)}>
+                              {course.isPublished ? (
+                                <>
+                                  <EyeOff className="h-4 w-4 mr-2" />
+                                  Unpublish (Hide from students)
+                                </>
+                              ) : (
+                                <>
+                                  <Eye className="h-4 w-4 mr-2" />
+                                  Publish (Make visible to students)
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleArchiveCourse(course.id)} className="text-destructive">
+                              <Archive className="h-4 w-4 mr-2" />
+                              Archive Course
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </>
+                    )}
+                    {!isLecturer && (
+                      <Badge variant="outline" className="text-xs">
+                        {course.semester}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                <CardTitle className="mt-3 text-lg">{course.title}</CardTitle>
+                <CardDescription className="line-clamp-2">
+                  {course.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1">
+                    <Users className="h-3.5 w-3.5" />
+                    {course.studentCount} students
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <ClipboardList className="h-3.5 w-3.5" />
+                    {course.assignmentCount || course.assignments?.length || 0} assignments
+                  </div>
+                </div>
+                {/* Show outcomes preview */}
+                {course.outcomes && course.outcomes.length > 0 && (
+                  <div className="mt-3 pt-3 border-t">
+                    <p className="text-xs font-medium text-muted-foreground mb-2">Learning Outcomes:</p>
+                    <div className="space-y-1">
+                      {course.outcomes.slice(0, 2).map((outcome, i) => (
+                        <div key={i} className="flex items-start gap-1 text-xs text-muted-foreground">
+                          <CheckCircle2 className="h-3 w-3 text-green-500 mt-0.5 shrink-0" />
+                          <span className="line-clamp-1">{outcome}</span>
+                        </div>
+                      ))}
+                      {course.outcomes.length > 2 && (
+                        <p className="text-xs text-muted-foreground pl-4">+{course.outcomes.length - 2} more outcomes</p>
+                      )}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <ClipboardList className="h-3.5 w-3.5" />
-                      {course.assignmentCount} assignments
-                    </div>
                   </div>
-                  <div className="mt-3 flex items-center gap-1 text-sm font-medium text-blue-600">
-                    Open course <ArrowRight className="h-3.5 w-3.5" />
+                )}
+                <Link href={`/dashboard/courses/${course.id}`}>
+                  <div className="mt-3 flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700">
+                    {isLecturer ? "Manage course" : "View course"} <ArrowRight className="h-3.5 w-3.5" />
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
+                </Link>
+              </CardContent>
+            </Card>
           ))}
         </div>
       </div>
