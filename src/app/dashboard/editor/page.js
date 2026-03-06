@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, Suspense } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
-import { BookOpen, FileText, CheckCircle2, Brain, Sparkles, Eye, Shield, Lock, ChevronRight, GraduationCap, X, Layers, AlertTriangle } from "lucide-react"
+import { BookOpen, FileText, CheckCircle2, Brain, Sparkles, Eye, Shield, Lock, ChevronRight, GraduationCap, X, Layers, AlertTriangle, Save, Clock, RotateCcw } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,12 +15,193 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
-import { demoAssignments, demoCopyEditorReview, demoFactCheckerReview, demoEthicsReview, demoFramingReview } from "@/lib/demo-data"
+import { demoAssignments, demoFactCheckerReview, demoEthicsReview, demoFramingReview } from "@/lib/demo-data"
 import { STORY_TYPE_LABELS } from "@/lib/types"
 import { getMicroLesson } from "@/lib/templates/micro-lessons"
 import { getReflectionPromptSet } from "@/lib/templates/reflection-prompts"
 import { canFinalSubmit } from "@/lib/verification-gate"
 import { getStoryTemplate } from "@/lib/templates/story-templates"
+
+// Storage key for auto-save
+const STORAGE_KEY = "newsroomlab_editor_draft"
+
+// Enhanced copy editor review with inline issues
+function generateCopyEditorReview(text) {
+  if (!text || text.length < 50) {
+    return { issues: [], overallScore: 0, overallNotes: "Not enough text to review." }
+  }
+  
+  const issues = []
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim())
+  
+  // Check for passive voice
+  const passivePatterns = [/was \w+ed/gi, /were \w+ed/gi, /is being/gi, /has been/gi, /had been/gi, /will be \w+ed/gi]
+  passivePatterns.forEach(pattern => {
+    const matches = text.match(pattern)
+    if (matches) {
+      matches.forEach(match => {
+        const index = text.toLowerCase().indexOf(match.toLowerCase())
+        issues.push({
+          type: "passive_voice",
+          severity: "warning",
+          text: match,
+          position: index,
+          message: "Passive voice detected. Consider using active voice for stronger, clearer writing.",
+          suggestion: "Rewrite in active voice: [Subject] [verb] [object]",
+          color: "bg-yellow-200 dark:bg-yellow-900/50"
+        })
+      })
+    }
+  })
+  
+  // Check for wordy phrases
+  const wordyPhrases = {
+    "in order to": "to",
+    "due to the fact that": "because",
+    "at this point in time": "now",
+    "in the event that": "if",
+    "for the purpose of": "to",
+    "in spite of the fact that": "although",
+    "a large number of": "many",
+    "the majority of": "most",
+    "in close proximity to": "near",
+    "at the present time": "now",
+    "it is important to note that": "[delete]",
+    "it should be noted that": "[delete]",
+    "there is": "[rewrite sentence]",
+    "there are": "[rewrite sentence]",
+  }
+  
+  Object.entries(wordyPhrases).forEach(([phrase, fix]) => {
+    const regex = new RegExp(phrase, "gi")
+    const matches = text.match(regex)
+    if (matches) {
+      matches.forEach(match => {
+        const index = text.toLowerCase().indexOf(phrase.toLowerCase())
+        issues.push({
+          type: "wordy",
+          severity: "suggestion",
+          text: match,
+          position: index,
+          message: `Wordy phrase: "${match}"`,
+          suggestion: `Replace with: "${fix}"`,
+          color: "bg-blue-200 dark:bg-blue-900/50"
+        })
+      })
+    }
+  })
+  
+  // Check for clichés
+  const cliches = ["at the end of the day", "think outside the box", "game changer", "moving forward", "paradigm shift", "synergy", "leverage", "stakeholders", "circle back", "touch base", "low-hanging fruit"]
+  cliches.forEach(cliche => {
+    if (text.toLowerCase().includes(cliche)) {
+      const index = text.toLowerCase().indexOf(cliche)
+      issues.push({
+        type: "cliche",
+        severity: "warning",
+        text: cliche,
+        position: index,
+        message: `Cliché detected: "${cliche}"`,
+        suggestion: "Replace with more specific, original language.",
+        color: "bg-orange-200 dark:bg-orange-900/50"
+      })
+    }
+  })
+  
+  // Check for long sentences (>35 words)
+  sentences.forEach((sentence, idx) => {
+    const words = sentence.trim().split(/\s+/)
+    if (words.length > 35) {
+      const index = text.indexOf(sentence.trim())
+      issues.push({
+        type: "long_sentence",
+        severity: "error",
+        text: sentence.trim().slice(0, 50) + "...",
+        position: index,
+        message: `Sentence too long (${words.length} words). Aim for 20-25 words max.`,
+        suggestion: "Break into shorter sentences for clarity.",
+        color: "bg-red-200 dark:bg-red-900/50"
+      })
+    }
+  })
+  
+  // Check for repeated words
+  const words = text.toLowerCase().match(/\b\w{4,}\b/g) || []
+  const wordCounts = {}
+  words.forEach(word => { wordCounts[word] = (wordCounts[word] || 0) + 1 })
+  Object.entries(wordCounts).forEach(([word, count]) => {
+    if (count > 3 && !["that", "this", "with", "from", "have", "been", "were", "said", "will", "would", "their", "they", "there", "about"].includes(word)) {
+      issues.push({
+        type: "repetition",
+        severity: "suggestion",
+        text: word,
+        position: text.toLowerCase().indexOf(word),
+        message: `Word "${word}" repeated ${count} times.`,
+        suggestion: "Use synonyms or restructure to avoid repetition.",
+        color: "bg-purple-200 dark:bg-purple-900/50"
+      })
+    }
+  })
+  
+  // Check for missing attribution
+  const quotePattern = /"[^"]+"/g
+  const quotes = text.match(quotePattern) || []
+  quotes.forEach(quote => {
+    const index = text.indexOf(quote)
+    const after = text.slice(index + quote.length, index + quote.length + 50)
+    if (!after.match(/said|says|according to|stated|noted|explained|added|wrote|reported/i)) {
+      issues.push({
+        type: "attribution",
+        severity: "error",
+        text: quote.slice(0, 30) + (quote.length > 30 ? "..." : ""),
+        position: index,
+        message: "Quote may be missing attribution.",
+        suggestion: "Add attribution: who said this?",
+        color: "bg-red-200 dark:bg-red-900/50"
+      })
+    }
+  })
+  
+  // Check for AP style issues
+  const apIssues = [
+    { pattern: /\b(\d),(\d{3})\b/g, message: "AP Style: Use numerals for numbers above 10", fix: "Check AP style for numbers" },
+    { pattern: /\bpercent\b/gi, message: "AP Style: Use % symbol with numerals", fix: "e.g., '50%' not '50 percent'" },
+    { pattern: /\b(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2},/gi, message: "AP Style: Abbreviate months with dates", fix: "e.g., 'Jan. 5' not 'January 5'" },
+  ]
+  
+  apIssues.forEach(({ pattern, message, fix }) => {
+    const matches = text.match(pattern)
+    if (matches) {
+      matches.slice(0, 2).forEach(match => {
+        issues.push({
+          type: "ap_style",
+          severity: "suggestion",
+          text: match,
+          position: text.indexOf(match),
+          message,
+          suggestion: fix,
+          color: "bg-cyan-200 dark:bg-cyan-900/50"
+        })
+      })
+    }
+  })
+  
+  // Calculate score
+  const errorCount = issues.filter(i => i.severity === "error").length
+  const warningCount = issues.filter(i => i.severity === "warning").length
+  const suggestionCount = issues.filter(i => i.severity === "suggestion").length
+  const score = Math.max(0, 100 - (errorCount * 15) - (warningCount * 8) - (suggestionCount * 3))
+  
+  return {
+    issues: issues.sort((a, b) => b.severity === "error" ? 1 : -1),
+    overallScore: score,
+    overallNotes: score >= 80 
+      ? "Good work! Minor improvements suggested." 
+      : score >= 60 
+        ? "Several issues need attention before submission."
+        : "Significant revision needed. Address the highlighted issues."
+  }
+}
 
 function LessonCoachPanel({ lessonIds, onClose }) {
   const [activeLessonId, setActiveLessonId] = useState(lessonIds[0] || null)
@@ -107,6 +288,7 @@ function EditorInner() {
   
   const [activeTab, setActiveTab] = useState("plan")
   const [draftContent, setDraftContent] = useState("")
+  const [headline, setHeadline] = useState("")
   const [revisedContent, setRevisedContent] = useState("")
   const [planCompleted, setPlanCompleted] = useState(false)
   const [planData, setPlanData] = useState({ angle: "", questions: ["", "", "", "", ""] })
@@ -115,10 +297,93 @@ function EditorInner() {
   const [aiDisclosure, setAiDisclosure] = useState({ tools: "", usage: "" })
   const [aiReviewRequested, setAiReviewRequested] = useState(false)
   const [aiReviewLoading, setAiReviewLoading] = useState(false)
+  const [aiReviewData, setAiReviewData] = useState(null)
   const [revisionCompleted, setRevisionCompleted] = useState(false)
+  const [lastSaved, setLastSaved] = useState(null)
+  const [hasSavedDraft, setHasSavedDraft] = useState(false)
   const [verificationItems, setVerificationItems] = useState([
     { id: "1", claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM", riskLevel: "LOW" }
   ])
+  
+  // Load saved draft on mount
+  useEffect(() => {
+    const savedKey = `${STORAGE_KEY}_${templateParam || "default"}`
+    const saved = localStorage.getItem(savedKey)
+    if (saved) {
+      try {
+        const data = JSON.parse(saved)
+        setHasSavedDraft(true)
+        // Don't auto-load, let user choose
+      } catch (e) {
+        console.error("Failed to parse saved draft:", e)
+      }
+    }
+  }, [templateParam])
+  
+  // Auto-save every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (draftContent || planData.angle || revisedContent) {
+        saveDraft(true)
+      }
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [draftContent, planData, revisedContent, verificationItems, reflectionAnswers])
+  
+  const saveDraft = (auto = false) => {
+    const savedKey = `${STORAGE_KEY}_${templateParam || "default"}`
+    const data = {
+      activeTab,
+      draftContent,
+      headline,
+      revisedContent,
+      planCompleted,
+      planData,
+      reflectionAnswers,
+      aiDisclosure,
+      aiReviewRequested,
+      revisionCompleted,
+      verificationItems,
+      savedAt: new Date().toISOString(),
+    }
+    localStorage.setItem(savedKey, JSON.stringify(data))
+    setLastSaved(new Date())
+    if (!auto) {
+      toast.success("Draft saved! You can continue later.")
+    }
+  }
+  
+  const loadSavedDraft = () => {
+    const savedKey = `${STORAGE_KEY}_${templateParam || "default"}`
+    const saved = localStorage.getItem(savedKey)
+    if (saved) {
+      try {
+        const data = JSON.parse(saved)
+        setActiveTab(data.activeTab || "plan")
+        setDraftContent(data.draftContent || "")
+        setHeadline(data.headline || "")
+        setRevisedContent(data.revisedContent || "")
+        setPlanCompleted(data.planCompleted || false)
+        setPlanData(data.planData || { angle: "", questions: ["", "", "", "", ""] })
+        setReflectionAnswers(data.reflectionAnswers || {})
+        setAiDisclosure(data.aiDisclosure || { tools: "", usage: "" })
+        setAiReviewRequested(data.aiReviewRequested || false)
+        setRevisionCompleted(data.revisionCompleted || false)
+        setVerificationItems(data.verificationItems || [{ id: "1", claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM", riskLevel: "LOW" }])
+        setHasSavedDraft(false)
+        toast.success("Draft loaded! Continue where you left off.")
+      } catch (e) {
+        toast.error("Failed to load saved draft")
+      }
+    }
+  }
+  
+  const clearSavedDraft = () => {
+    const savedKey = `${STORAGE_KEY}_${templateParam || "default"}`
+    localStorage.removeItem(savedKey)
+    setHasSavedDraft(false)
+    toast.success("Saved draft cleared. Starting fresh.")
+  }
   
   const wordCount = draftContent.split(/\s+/).filter((w) => w.length > 0).length
   const verifiedItems = verificationItems.filter((v) => v.claim && v.evidence)
@@ -166,6 +431,30 @@ function EditorInner() {
 
   return (
     <div className="space-y-6">
+      {/* Saved Draft Banner */}
+      {hasSavedDraft && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Clock className="h-5 w-5 text-blue-600" />
+              <div>
+                <p className="font-medium text-sm">You have a saved draft</p>
+                <p className="text-xs text-muted-foreground">Continue where you left off or start fresh</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={clearSavedDraft}>
+                Start Fresh
+              </Button>
+              <Button size="sm" onClick={loadSavedDraft} className="gap-2">
+                <RotateCcw className="h-3.5 w-3.5" />
+                Load Draft
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
@@ -184,11 +473,25 @@ function EditorInner() {
           <h1 className="text-2xl font-bold tracking-tight">{assignment.title}</h1>
           <p className="text-muted-foreground mt-1">{wordCountLabel}</p>
         </div>
-        <div className="text-right">
-          <div className="text-sm text-muted-foreground mb-1">Progress</div>
-          <div className="flex items-center gap-2">
-            <Progress value={overallProgress} className="w-32 h-2" />
-            <span className="text-sm font-medium">{Math.round(overallProgress)}%</span>
+        <div className="flex items-center gap-4">
+          {/* Save & Auto-save Status */}
+          <div className="text-right">
+            <Button variant="outline" size="sm" onClick={() => saveDraft(false)} className="gap-2">
+              <Save className="h-3.5 w-3.5" />
+              Save Draft
+            </Button>
+            {lastSaved && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Last saved: {lastSaved.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-muted-foreground mb-1">Progress</div>
+            <div className="flex items-center gap-2">
+              <Progress value={overallProgress} className="w-32 h-2" />
+              <span className="text-sm font-medium">{Math.round(overallProgress)}%</span>
+            </div>
           </div>
         </div>
       </div>
@@ -513,6 +816,9 @@ function EditorInner() {
                     setAiReviewLoading(true)
                     // Simulate AI review processing
                     await new Promise(resolve => setTimeout(resolve, 2000))
+                    // Generate real copy editor review based on draft content
+                    const copyReview = generateCopyEditorReview(draftContent)
+                    setAiReviewData({ copyEditor: copyReview })
                     setAiReviewRequested(true)
                     setAiReviewLoading(false)
                     toast.success("AI review complete! Check each editor's feedback.")
@@ -563,17 +869,108 @@ function EditorInner() {
                 <TabsContent value="copy">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Copy Editor</CardTitle>
-                      <CardDescription>{demoCopyEditorReview.overallNotes}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <h3 className="font-semibold text-sm mb-2">Must-Fix Items</h3>
-                      {demoCopyEditorReview.mustFix.map((item) => (
-                        <div key={item.id} className="rounded-lg border p-3 mb-2">
-                          <p className="text-sm"><strong>Issue:</strong> {item.issue}</p>
-                          <p className="text-sm text-green-700"><strong>Fix:</strong> {item.fix}</p>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-base">Copy Editor</CardTitle>
+                          <CardDescription>{aiReviewData?.copyEditor?.overallNotes || "Analyzing..."}</CardDescription>
                         </div>
-                      ))}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-muted-foreground">Score:</span>
+                          <Badge 
+                            variant={aiReviewData?.copyEditor?.overallScore >= 80 ? "default" : aiReviewData?.copyEditor?.overallScore >= 60 ? "secondary" : "destructive"}
+                            className="text-base px-3"
+                          >
+                            {aiReviewData?.copyEditor?.overallScore || 0}/100
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Highlighted Draft Preview */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Your Draft with Highlighted Issues</Label>
+                        <div className="rounded-lg border bg-white dark:bg-zinc-900 p-4 text-sm font-mono leading-relaxed max-h-64 overflow-y-auto">
+                          {draftContent.split(/(\s+)/).map((word, idx) => {
+                            const issue = aiReviewData?.copyEditor?.issues?.find(i => 
+                              word.toLowerCase().includes(i.text.toLowerCase().split(" ")[0])
+                            )
+                            if (issue) {
+                              return (
+                                <span 
+                                  key={idx} 
+                                  className={`${issue.color} px-0.5 rounded cursor-help`}
+                                  title={`${issue.message}\n→ ${issue.suggestion}`}
+                                >
+                                  {word}
+                                </span>
+                              )
+                            }
+                            return <span key={idx}>{word}</span>
+                          })}
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-200"></span> Error</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-200"></span> Warning</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-200"></span> Wordy</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-200"></span> Cliché</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-200"></span> Repetition</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-cyan-200"></span> AP Style</span>
+                        </div>
+                      </div>
+                      
+                      <Separator />
+                      
+                      {/* Issue List */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Issues Found ({aiReviewData?.copyEditor?.issues?.length || 0})</Label>
+                          <div className="flex gap-2 text-xs">
+                            <Badge variant="destructive">{aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "error").length || 0} errors</Badge>
+                            <Badge variant="secondary">{aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "warning").length || 0} warnings</Badge>
+                            <Badge variant="outline">{aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "suggestion").length || 0} suggestions</Badge>
+                          </div>
+                        </div>
+                        <ScrollArea className="max-h-80">
+                          <div className="space-y-2">
+                            {aiReviewData?.copyEditor?.issues?.map((issue, idx) => (
+                              <div 
+                                key={idx} 
+                                className={`rounded-lg border p-3 ${
+                                  issue.severity === "error" ? "border-red-200 bg-red-50 dark:bg-red-950/30" :
+                                  issue.severity === "warning" ? "border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30" :
+                                  "border-zinc-200 bg-zinc-50 dark:bg-zinc-900"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <Badge 
+                                        variant={issue.severity === "error" ? "destructive" : issue.severity === "warning" ? "secondary" : "outline"}
+                                        className="text-xs"
+                                      >
+                                        {issue.type.replace(/_/g, " ")}
+                                      </Badge>
+                                      <span className={`px-1.5 py-0.5 rounded text-xs font-mono ${issue.color}`}>
+                                        {issue.text}
+                                      </span>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">{issue.message}</p>
+                                    <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                                      <strong>Fix:</strong> {issue.suggestion}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            {(!aiReviewData?.copyEditor?.issues || aiReviewData.copyEditor.issues.length === 0) && (
+                              <div className="text-center py-8 text-muted-foreground">
+                                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                                <p>No issues found! Your copy looks clean.</p>
+                              </div>
+                            )}
+                          </div>
+                        </ScrollArea>
+                      </div>
                     </CardContent>
                   </Card>
                 </TabsContent>
