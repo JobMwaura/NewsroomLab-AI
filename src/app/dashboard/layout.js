@@ -8,19 +8,30 @@ import { DashboardHeader } from "@/components/dashboard/header"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 
 export default function DashboardLayout({ children }) {
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    // Only redirect after loading is complete and user is not authenticated
+    if (!isLoading && !isAuthenticated) {
       router.push("/login")
     }
-  }, [isAuthenticated, router])
+  }, [isAuthenticated, isLoading, router])
 
-  if (!isAuthenticated) {
+  // Show loading state while checking auth
+  if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="animate-pulse text-zinc-400">Loading...</div>
+      </div>
+    )
+  }
+
+  // After loading, if not authenticated, show loading while redirecting
+  if (!isAuthenticated) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-pulse text-zinc-400">Redirecting to login...</div>
       </div>
     )
   }

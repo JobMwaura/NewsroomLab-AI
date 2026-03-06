@@ -1,12 +1,39 @@
 "use client"
 
-import React, { createContext, useContext, useState, useCallback } from "react"
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react"
 import { demoUsers } from "@/lib/demo-data"
 
 const AuthContext = createContext(undefined)
 
+const STORAGE_KEY = "newsroomlab_user"
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        setUser(parsed)
+      }
+    } catch (e) {
+      console.error("Failed to restore session:", e)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
+  // Persist user to localStorage whenever it changes
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+    } else {
+      localStorage.removeItem(STORAGE_KEY)
+    }
+  }, [user])
 
   const login = useCallback(async (email, _password) => {
     // Demo mode: match by email
@@ -28,6 +55,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(() => {
     setUser(null)
+    localStorage.removeItem(STORAGE_KEY)
   }, [])
 
   const switchRole = useCallback((role) => {
@@ -38,7 +66,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, login, logout, switchRole }}>
+    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout, switchRole }}>
       {children}
     </AuthContext.Provider>
   )
