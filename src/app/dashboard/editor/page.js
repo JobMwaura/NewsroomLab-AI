@@ -1371,7 +1371,46 @@ function EditorInner() {
                       size="lg" 
                       className="w-full gap-2" 
                       disabled={!allPassed} 
-                      onClick={() => toast.success("🎉 Submission received! Your work is now with your lecturer.")}
+                      onClick={() => {
+                        // Save submission to localStorage for portfolio
+                        const submission = {
+                          id: `submission_${Date.now()}`,
+                          title: headline || assignment.title,
+                          storyType: assignment.storyType || "HARD_NEWS",
+                          course: assignment.courseCode || "HCC 314",
+                          date: new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+                          submittedAt: new Date().toISOString(),
+                          draftContent: revisedContent || draftContent,
+                          headline,
+                          verifications: verifiedItems.length,
+                          verificationTable: verifiedItems,
+                          reflectionAnswers,
+                          aiDisclosure,
+                          score: undefined, // Will be graded later
+                          selected: false,
+                          assignmentId: assignment.id,
+                          templateId: templateParam,
+                        }
+                        
+                        // Get existing submissions
+                        const existingSubmissions = JSON.parse(localStorage.getItem("newsroomlab_portfolio") || "[]")
+                        
+                        // Check if already submitted this assignment
+                        const existingIndex = existingSubmissions.findIndex(s => s.assignmentId === assignment.id)
+                        if (existingIndex >= 0) {
+                          existingSubmissions[existingIndex] = submission
+                        } else {
+                          existingSubmissions.push(submission)
+                        }
+                        
+                        localStorage.setItem("newsroomlab_portfolio", JSON.stringify(existingSubmissions))
+                        
+                        // Clear the draft from localStorage
+                        const savedKey = `${STORAGE_KEY}_${templateParam || "default"}`
+                        localStorage.removeItem(savedKey)
+                        
+                        toast.success("🎉 Submission received! Your work is now in your portfolio and sent to your lecturer.")
+                      }}
                     >
                       {allPassed ? (
                         <><Shield className="h-4 w-4" />Submit Final Version</>
