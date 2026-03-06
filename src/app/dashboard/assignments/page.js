@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
 import {
   FileText,
@@ -9,17 +10,71 @@ import {
   ArrowRight,
   Plus,
   Filter,
+  ChevronRight,
+  BookOpen,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/components/providers/auth-provider"
-import { demoAssignments } from "@/lib/demo-data"
+import { demoAssignments, demoCourses } from "@/lib/demo-data"
 import { STORY_TYPE_LABELS } from "@/lib/types"
+import { storyTemplates, storyTemplateCategories, getTemplatesByCategory, getRubricPreset } from "@/lib/templates"
+import { toast } from "sonner"
 
 export default function AssignmentsPage() {
   const { user } = useAuth()
   const isLecturer = user?.role === "LECTURER" || user?.role === "ADMIN"
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
+  const [step, setStep] = useState(1)
+  const [assignments, setAssignments] = useState(demoAssignments)
+
+  const handleSelectTemplate = (template) => {
+    setSelectedTemplate(template)
+    setStep(2)
+  }
+
+  const handleCreateAssignment = (e) => {
+    e.preventDefault()
+    const formData = new FormData(e.target)
+    const newAssignment = {
+      id: `assign_${Date.now()}`,
+      title: formData.get("title") || selectedTemplate.label,
+      courseName: formData.get("course") || "Unassigned",
+      storyType: selectedTemplate.id.toUpperCase(),
+      brief: formData.get("brief") || selectedTemplate.description || `Write a ${selectedTemplate.label}.`,
+      dueAt: formData.get("dueDate") || new Date(Date.now() + 14 * 86400000).toISOString(),
+      isPublished: true,
+      constraints: {
+        wordCountMin: selectedTemplate.wordCountRange[0],
+        wordCountMax: selectedTemplate.wordCountRange[1],
+      },
+      requiredComponents: {
+        verificationTable: (selectedTemplate.requiredComponents || []).includes("verification_table"),
+        ethicsMemo: (selectedTemplate.requiredComponents || []).includes("ethics_memo"),
+        reportingPlan: (selectedTemplate.requiredComponents || []).includes("reporting_plan"),
+        aiDisclosure: (selectedTemplate.requiredComponents || []).includes("ai_disclosure"),
+        reflection: (selectedTemplate.requiredComponents || []).includes("reflection"),
+      },
+      verificationRules: selectedTemplate.verificationDefaults || { minItems: 3, minHighConfidence: 1 },
+      submissionCount: 0,
+      gradedCount: 0,
+      templateId: selectedTemplate.id,
+    }
+    setAssignments((prev) => [newAssignment, ...prev])
+    setDialogOpen(false)
+    setSelectedTemplate(null)
+    setStep(1)
+    toast.success(`Assignment "${newAssignment.title}" created from template!`)
+  }
 
   return (
     <div className="space-y-8">
@@ -38,16 +93,162 @@ export default function AssignmentsPage() {
             Filter
           </Button>
           {isLecturer && (
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              New Assignment
-            </Button>
+            <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setStep(1); setSelectedTemplate(null) } }}>
+              <DialogTrigger asChild>
+                <Button className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  New Assignment
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-2xl max-h-[85vh]">
+                {step === 1 ? (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <FileText className="h-5 w-5" />
+                        New Assignment from Template
+                      </DialogTitle>
+                      <DialogDescription>
+                        Select a story template. Each template includes word count rules, required sections, verification defaults, and a rubric.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <Tabs defaultValue={storyTemplateCategories[0]} className="space-y-4">
+                      <TabsList className="w-full flex-wrap h-auto gap-1 p-1">
+                        {storyTemplateCategories.map((cat) => (
+                          <TabsTrigger key={cat} value={cat} className="text-xs capitalize">
+                            {cat.toLowerCase()}
+                          </TabsTrigger>
+                        ))}
+                      </TabsList>
+                      {storyTemplateCategories.map((cat) => (
+                        <TabsContent key={cat} value={cat}>
+                          <ScrollArea className="max-h-[45vh] pr-4">
+                            <div className="grid gap-2">
+                              {getTemplatesByCategory(cat).map((t) => (
+                                <button
+                                  key={t.id}
+                                  onClick={() => handleSelectTemplate(t)}
+                                  className="w-full text-left rounded-lg border p-3 hover:border-blue-400 hover:bg-blue-50/50 dark:hover:bg-blue-950/30 transition-all group"
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <h4 className="text-sm font-medium">{t.label}</h4>
+                                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                        <Badge variant="outline" className="text-xs">{t.wordCountRange[0]}–{t.wordCountRange[1]} words</Badge>
+                                        {t.requiredSections && (
+                                          <Badge variant="secondary" className="text-xs">{t.requiredSections.length} sections</Badge>
+                                        )}
+                                        {t.constraints && t.constraints.length > 0 && (
+                                          <Badge variant="secondary" className="text-xs">{t.constraints.length} constraints</Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-blue-500 mt-1 shrink-0" />
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </TabsContent>
+                      ))}
+                    </Tabs>
+                  </>
+                ) : (
+                  <>
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <BookOpen className="h-5 w-5" />
+                        Configure: {selectedTemplate.label}
+                      </DialogTitle>
+                      <DialogDescription>
+                        Customise the assignment details. Rubric, sections, and verification rules come from the template.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <ScrollArea className="max-h-[55vh] pr-4">
+                      <form id="createAssignmentForm" onSubmit={handleCreateAssignment} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="assignTitle">Assignment Title</Label>
+                          <Input id="assignTitle" name="title" defaultValue={selectedTemplate.label} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="assignCourse">Assign to Course</Label>
+                            <Select name="course" defaultValue={demoCourses[0]?.title}>
+                              <SelectTrigger id="assignCourse"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {demoCourses.filter(c => !c.isArchived).map(c => (
+                                  <SelectItem key={c.id} value={c.title}>{c.code} — {c.title}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="dueDate">Due Date</Label>
+                            <Input id="dueDate" name="dueDate" type="date" defaultValue={new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0]} />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="brief">Assignment Brief</Label>
+                          <textarea id="brief" name="brief" rows={3} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" placeholder={`Write a ${selectedTemplate.label}...`} />
+                        </div>
+
+                        <Separator />
+
+                        <div className="space-y-2">
+                          <h4 className="text-sm font-semibold">Template Details</h4>
+                          <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                            <div>📏 Word count: {selectedTemplate.wordCountRange[0]}–{selectedTemplate.wordCountRange[1]}</div>
+                            <div>📝 Rubric: {selectedTemplate.rubricId || "default"}</div>
+                            <div>✅ Min verification items: {selectedTemplate.verificationDefaults?.minItems || 3}</div>
+                            <div>📚 Micro-lessons: {(selectedTemplate.microLessonIds || []).length}</div>
+                          </div>
+                        </div>
+
+                        {selectedTemplate.requiredSections && (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-semibold">Required Sections</h4>
+                            <div className="flex flex-wrap gap-1">
+                              {selectedTemplate.requiredSections.map((s) => (
+                                <Badge key={s} variant="outline" className="text-xs">{s.replace(/_/g, " ")}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedTemplate.constraints && selectedTemplate.constraints.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-semibold">Constraints</h4>
+                            <ul className="space-y-1">
+                              {selectedTemplate.constraints.map((c, i) => (
+                                <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                                  <span>•</span>{c}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </form>
+                    </ScrollArea>
+                    <div className="flex justify-between pt-2">
+                      <Button type="button" variant="outline" onClick={() => { setStep(1); setSelectedTemplate(null) }}>
+                        ← Back
+                      </Button>
+                      <Button type="submit" form="createAssignmentForm" className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Create Assignment
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </DialogContent>
+            </Dialog>
           )}
         </div>
       </div>
 
       <div className="space-y-4">
-        {demoAssignments.map((assignment) => {
+        {assignments.map((assignment) => {
           const daysUntilDue = Math.ceil(
             (new Date(assignment.dueAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
           )

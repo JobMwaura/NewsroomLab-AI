@@ -11,6 +11,9 @@ import {
   Shield,
   Lock,
   ChevronRight,
+  GraduationCap,
+  X,
+  Lightbulb,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -38,6 +41,94 @@ import {
   demoFramingReview,
 } from "@/lib/demo-data"
 import { STORY_TYPE_LABELS } from "@/lib/types"
+import { microLessons, getMicroLesson } from "@/lib/templates/micro-lessons"
+import { getReflectionPromptSet } from "@/lib/templates/reflection-prompts"
+import { canFinalSubmit, getGateProgress } from "@/lib/verification-gate"
+
+// Lesson Coach Panel Component
+function LessonCoachPanel({ lessonIds, onClose }) {
+  const [activeLessonId, setActiveLessonId] = useState(lessonIds[0] || null)
+  const activeLesson = activeLessonId ? getMicroLesson(activeLessonId) : null
+
+  if (!lessonIds || lessonIds.length === 0) return null
+
+  return (
+    <Card className="border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/20">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <GraduationCap className="h-4 w-4 text-blue-600" />
+            Lesson Coach
+          </CardTitle>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onClose}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Lesson tabs */}
+        <div className="flex flex-wrap gap-1">
+          {lessonIds.slice(0, 8).map((id) => {
+            const lesson = getMicroLesson(id)
+            if (!lesson) return null
+            return (
+              <button
+                key={id}
+                onClick={() => setActiveLessonId(id)}
+                className={`text-xs px-2 py-1 rounded-md transition-all ${
+                  activeLessonId === id
+                    ? "bg-blue-600 text-white"
+                    : "bg-white dark:bg-zinc-800 border hover:bg-blue-100 dark:hover:bg-blue-950"
+                }`}
+              >
+                {lesson.icon} {lesson.title.length > 20 ? lesson.title.slice(0, 20) + "…" : lesson.title}
+              </button>
+            )
+          })}
+          {lessonIds.length > 8 && (
+            <span className="text-xs text-muted-foreground self-center">+{lessonIds.length - 8} more</span>
+          )}
+        </div>
+
+        {/* Active lesson content */}
+        {activeLesson && (
+          <ScrollArea className="max-h-[350px]">
+            <div className="space-y-3">
+              <h4 className="font-semibold text-sm flex items-center gap-2">
+                <span>{activeLesson.icon}</span>
+                {activeLesson.title}
+              </h4>
+              <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
+                {activeLesson.content}
+              </div>
+              {activeLesson.example && (
+                <div className="space-y-2 mt-3">
+                  <h5 className="text-xs font-semibold flex items-center gap-1">
+                    <Lightbulb className="h-3 w-3 text-amber-500" />
+                    Example
+                  </h5>
+                  {activeLesson.example.bad && (
+                    <div className="rounded-md border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 p-2">
+                      <p className="text-xs text-red-700 dark:text-red-400 line-through">{activeLesson.example.bad}</p>
+                    </div>
+                  )}
+                  {activeLesson.example.good && (
+                    <div className="rounded-md border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 p-2">
+                      <p className="text-xs text-green-700 dark:text-green-400">{activeLesson.example.good}</p>
+                    </div>
+                  )}
+                  {activeLesson.example.why && (
+                    <p className="text-xs text-muted-foreground italic">{activeLesson.example.why}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
 
 const workflowSteps = [
   { id: "plan", label: "Reporting Plan", icon: BookOpen, required: true },
@@ -53,11 +144,20 @@ export default function EditorPage() {
   const [activeTab, setActiveTab] = useState("plan")
   const [draftContent, setDraftContent] = useState("")
   const [planCompleted, setPlanCompleted] = useState(false)
+  const [showLessonCoach, setShowLessonCoach] = useState(true)
+  const [reflectionAnswers, setReflectionAnswers] = useState({})
+  const [aiDisclosure, setAiDisclosure] = useState({ tools: "", usage: "", rejected: "", verification: "" })
   const [verificationItems, setVerificationItems] = useState([
     { id: "1", claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM" },
   ])
 
   const assignment = demoAssignments[0] // Demo: County Budget assignment
+
+  // Micro-lesson IDs for this assignment type (demo: hard news)
+  const lessonIdsForAssignment = ["lead_writing", "inverted_pyramid", "attribution_rules", "nut_graf", "specificity", "active_voice", "right_of_reply", "news_values"]
+
+  // Reflection prompts for this assignment
+  const reflectionPromptSet = getReflectionPromptSet("news_reporting")
 
   const wordCount = draftContent
     .split(/\s+/)
@@ -295,21 +395,44 @@ export default function EditorPage() {
                 />
               </div>
 
-              <div className="mt-4 space-y-2">
-                <Label htmlFor="draft">Story Body</Label>
-                <Textarea
-                  id="draft"
-                  value={draftContent}
-                  onChange={(e) => setDraftContent(e.target.value)}
-                  placeholder="Start writing your story here...
+              {/* Lesson Coach toggle */}
+              {!showLessonCoach && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 text-blue-600"
+                  onClick={() => setShowLessonCoach(true)}
+                >
+                  <GraduationCap className="h-3.5 w-3.5" />
+                  Show Lesson Coach
+                </Button>
+              )}
+
+              <div className={`grid gap-4 ${showLessonCoach ? "lg:grid-cols-[1fr_340px]" : ""}`}>
+                <div className="space-y-2">
+                  <Label htmlFor="draft">Story Body</Label>
+                  <Textarea
+                    id="draft"
+                    value={draftContent}
+                    onChange={(e) => setDraftContent(e.target.value)}
+                    placeholder="Start writing your story here...
 
 Remember:
 • Lead with the most newsworthy element
 • Attribute all claims to named sources
 • Use specific figures, not vague language
 • Follow the inverted pyramid structure"
-                  className="min-h-[400px] font-mono text-sm leading-relaxed"
-                />
+                    className="min-h-[400px] font-mono text-sm leading-relaxed"
+                  />
+                </div>
+
+                {/* Lesson Coach Panel */}
+                {showLessonCoach && (
+                  <LessonCoachPanel
+                    lessonIds={lessonIdsForAssignment}
+                    onClose={() => setShowLessonCoach(false)}
+                  />
+                )}
               </div>
 
               <div className="mt-4 flex items-center justify-between">
@@ -757,15 +880,28 @@ Remember:
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <Label>Reflection</Label>
                 <p className="text-xs text-muted-foreground">
-                  Reflect on your reporting and writing process. What did you learn? What would you do differently?
+                  Answer at least 3 of the following prompts. Reflect deeply — your reflection is graded.
                 </p>
-                <Textarea
-                  placeholder="Write your reflection here..."
-                  className="min-h-32"
-                />
+                {reflectionPromptSet.prompts.map((prompt) => (
+                  <div key={prompt.id} className="space-y-2 rounded-lg border p-4">
+                    <Label className="text-sm font-medium">{prompt.question}</Label>
+                    {prompt.hint && (
+                      <p className="text-xs text-muted-foreground italic flex items-start gap-1">
+                        <Lightbulb className="h-3 w-3 mt-0.5 shrink-0 text-amber-500" />
+                        {prompt.hint}
+                      </p>
+                    )}
+                    <Textarea
+                      placeholder="Write your reflection..."
+                      className="min-h-20 text-sm"
+                      value={reflectionAnswers[prompt.id] || ""}
+                      onChange={(e) => setReflectionAnswers(prev => ({ ...prev, [prompt.id]: e.target.value }))}
+                    />
+                  </div>
+                ))}
               </div>
 
               <Separator />
@@ -832,53 +968,128 @@ Remember:
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Checklist */}
-              {[
-                { label: "Reporting plan completed", passed: completionStatus.plan },
-                {
-                  label: `Draft meets word count (${wordCount}/${assignment.constraints.wordCountMin}–${assignment.constraints.wordCountMax})`,
-                  passed: completionStatus.draft,
-                },
-                {
-                  label: `Verification table (${verificationItems.filter((v) => v.claim && v.evidence).length}/${assignment.verificationRules.minItems} items)`,
-                  passed: completionStatus.verification,
-                },
-                { label: "AI review completed", passed: false },
-                { label: "Revision submitted (v2)", passed: false },
-                { label: "Reflection & AI disclosure completed", passed: false },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className={`flex items-center gap-3 rounded-lg border p-3 ${
-                    item.passed
-                      ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950"
-                      : "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
-                  }`}
-                >
-                  {item.passed ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
-                  ) : (
-                    <Lock className="h-5 w-5 text-zinc-400 shrink-0" />
-                  )}
-                  <span className={`text-sm ${item.passed ? "text-green-700 dark:text-green-400" : "text-muted-foreground"}`}>
-                    {item.label}
-                  </span>
-                </div>
-              ))}
+              {/* Verification Gate Checklist */}
+              {(() => {
+                const reflectionText = Object.values(reflectionAnswers).join(" ")
+                const submission = {
+                  plan: planCompleted ? { angle: "set", sources: ["source1"] } : null,
+                  verificationTable: verificationItems.filter(v => v.claim && v.evidence).map(v => ({
+                    ...v,
+                    sources: v.sourceRef ? [{ name: v.sourceRef, url: v.sourceRef }] : [],
+                    status: "verified",
+                  })),
+                  sources: verificationItems.filter(v => v.sourceRef).map(v => ({ name: v.sourceRef, url: v.sourceRef })),
+                  draftText: draftContent,
+                  reflection: reflectionText.length > 0 ? reflectionText : null,
+                  aiDisclosure: aiDisclosure.tools || aiDisclosure.usage ? { declared: true } : null,
+                  ethicsReview: {},
+                  sections: {},
+                }
+                const templateConfig = {
+                  wordCountRange: [assignment.constraints.wordCountMin, assignment.constraints.wordCountMax],
+                }
+                const rules = {
+                  verificationMinRows: assignment.verificationRules.minItems,
+                  requireAllSections: false,
+                  requireEthicsMitigation: false,
+                  requireRightOfReply: false,
+                }
+                const result = canFinalSubmit(submission, rules, templateConfig)
+                const gateProgress = getGateProgress(submission, rules, templateConfig)
 
-              <Separator />
+                const gateLabels = {
+                  plan: "Reporting plan completed",
+                  verification: `Verification table (${verificationItems.filter(v => v.claim && v.evidence).length}/${assignment.verificationRules.minItems} items)`,
+                  word_count: `Draft meets word count (${wordCount}/${assignment.constraints.wordCountMin}–${assignment.constraints.wordCountMax})`,
+                  ai_disclosure: "AI disclosure completed",
+                  reflection: "Reflection completed (min 100 characters)",
+                }
 
-              <Button
-                size="lg"
-                className="w-full gap-2"
-                disabled={true}
-              >
-                <Lock className="h-4 w-4" />
-                Submit Final Version
-              </Button>
-              <p className="text-xs text-center text-muted-foreground">
-                Complete all requirements above to unlock submission.
-              </p>
+                return (
+                  <>
+                    {/* Summary */}
+                    <div className={`rounded-lg border p-3 text-sm ${result.allowed ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950 text-green-700 dark:text-green-400" : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950 text-amber-700 dark:text-amber-400"}`}>
+                      {result.summary}
+                    </div>
+
+                    {Object.entries(gateLabels).map(([gate, label]) => {
+                      const status = gateProgress.gates[gate]
+                      const passed = status === "pass"
+                      const warn = status === "warn"
+                      return (
+                        <div
+                          key={gate}
+                          className={`flex items-center gap-3 rounded-lg border p-3 ${
+                            passed
+                              ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950"
+                              : warn
+                              ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950"
+                              : "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
+                          }`}
+                        >
+                          {passed ? (
+                            <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
+                          ) : (
+                            <Lock className="h-5 w-5 text-zinc-400 shrink-0" />
+                          )}
+                          <span className={`text-sm ${passed ? "text-green-700 dark:text-green-400" : "text-muted-foreground"}`}>
+                            {label}
+                          </span>
+                        </div>
+                      )
+                    })}
+
+                    {/* Show specific failures */}
+                    {result.failures.length > 0 && (
+                      <div className="space-y-2 mt-2">
+                        <h4 className="text-xs font-semibold text-red-600">Issues to resolve:</h4>
+                        {result.failures.map((f, i) => (
+                          <p key={i} className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1">
+                            <span>•</span> {f.message}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    {result.warnings.length > 0 && (
+                      <div className="space-y-2 mt-2">
+                        <h4 className="text-xs font-semibold text-amber-600">Warnings:</h4>
+                        {result.warnings.map((w, i) => (
+                          <p key={i} className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
+                            <span>⚠</span> {w.message}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    <Separator />
+
+                    <Button
+                      size="lg"
+                      className="w-full gap-2"
+                      disabled={!result.allowed}
+                      onClick={() => toast.success("Submission received! Your lecturer will review and grade it.")}
+                    >
+                      {result.allowed ? (
+                        <>
+                          <Shield className="h-4 w-4" />
+                          Submit Final Version
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="h-4 w-4" />
+                          Submit Final Version
+                        </>
+                      )}
+                    </Button>
+                    <p className="text-xs text-center text-muted-foreground">
+                      {result.allowed
+                        ? "All gates passed. Click to submit your final version."
+                        : "Complete all requirements above to unlock submission."}
+                    </p>
+                  </>
+                )
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
