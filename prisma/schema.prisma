@@ -31,6 +31,7 @@ enum EnrollmentStatus {
 
 enum StoryType {
   HARD_NEWS
+  FOLLOW_UP
   FEATURE
   PROFILE
   OBITUARY
@@ -42,6 +43,14 @@ enum StoryType {
   SPORTS
   DISASTER
   ONLINE_UPDATE
+  BROADCAST_VO
+  BROADCAST_PKG
+  PODCAST
+  MOJO
+  DATA_STORY
+  LIVE_BLOG
+  EDITORIAL
+  REVIEW
 }
 
 enum SubmissionStatus {
@@ -166,9 +175,13 @@ model Assignment {
   constraints        Json
   dueAt              DateTime  @map("due_at")
   requiredComponents Json      @map("required_components")
+  requiredSections   Json      @default("[]") @map("required_sections")
   rubricId           String?   @map("rubric_id")
   aiModules          Json      @map("ai_modules")
   verificationRules  Json      @map("verification_rules")
+  templateId         String?   @map("template_id")
+  microLessonIds     Json      @default("[]") @map("micro_lesson_ids")
+  reflectionSetId    String?   @map("reflection_set_id")
   isPublished        Boolean   @default(false) @map("is_published")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
@@ -248,6 +261,7 @@ model VerificationItem {
   sourceType              SourceType @map("source_type")
   sourceRef               String     @map("source_ref")
   confidence              Confidence @default(MEDIUM)
+  riskLevel               RiskLevel  @default(LOW) @map("risk_level")
   needsSecondConfirmation Boolean    @default(false) @map("needs_second_confirmation")
   secondSourceRef         String?    @map("second_source_ref")
   notes                   String?

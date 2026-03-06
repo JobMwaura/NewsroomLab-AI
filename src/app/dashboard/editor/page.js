@@ -1,20 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import {
-  BookOpen,
-  FileText,
-  CheckCircle2,
-  Brain,
-  Sparkles,
-  Eye,
-  Shield,
-  Lock,
-  ChevronRight,
-  GraduationCap,
-  X,
-  Lightbulb,
-} from "lucide-react"
+import { useState, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
+import { BookOpen, FileText, CheckCircle2, Brain, Sparkles, Eye, Shield, Lock, ChevronRight, GraduationCap, X, Layers, AlertTriangle } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -24,34 +12,21 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
-import {
-  demoAssignments,
-  demoCopyEditorReview,
-  demoFactCheckerReview,
-  demoEthicsReview,
-  demoFramingReview,
-} from "@/lib/demo-data"
+import { demoAssignments, demoCopyEditorReview, demoFactCheckerReview, demoEthicsReview, demoFramingReview } from "@/lib/demo-data"
 import { STORY_TYPE_LABELS } from "@/lib/types"
-import { microLessons, getMicroLesson } from "@/lib/templates/micro-lessons"
+import { getMicroLesson } from "@/lib/templates/micro-lessons"
 import { getReflectionPromptSet } from "@/lib/templates/reflection-prompts"
-import { canFinalSubmit, getGateProgress } from "@/lib/verification-gate"
+import { canFinalSubmit } from "@/lib/verification-gate"
+import { getStoryTemplate } from "@/lib/templates/story-templates"
 
-// Lesson Coach Panel Component
 function LessonCoachPanel({ lessonIds, onClose }) {
   const [activeLessonId, setActiveLessonId] = useState(lessonIds[0] || null)
   const activeLesson = activeLessonId ? getMicroLesson(activeLessonId) : null
-
   if (!lessonIds || lessonIds.length === 0) return null
-
+  
   return (
     <Card className="border-blue-200 dark:border-blue-900 bg-blue-50/30 dark:bg-blue-950/20">
       <CardHeader className="pb-3">
@@ -66,62 +41,29 @@ function LessonCoachPanel({ lessonIds, onClose }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* Lesson tabs */}
         <div className="flex flex-wrap gap-1">
           {lessonIds.slice(0, 8).map((id) => {
             const lesson = getMicroLesson(id)
             if (!lesson) return null
+            const isActive = activeLessonId === id
             return (
               <button
                 key={id}
                 onClick={() => setActiveLessonId(id)}
-                className={`text-xs px-2 py-1 rounded-md transition-all ${
-                  activeLessonId === id
-                    ? "bg-blue-600 text-white"
-                    : "bg-white dark:bg-zinc-800 border hover:bg-blue-100 dark:hover:bg-blue-950"
-                }`}
+                className={isActive 
+                  ? "text-xs px-2 py-1 rounded-md bg-blue-600 text-white" 
+                  : "text-xs px-2 py-1 rounded-md bg-white dark:bg-zinc-800 border hover:bg-blue-100"}
               >
-                {lesson.icon} {lesson.title.length > 20 ? lesson.title.slice(0, 20) + "…" : lesson.title}
+                {lesson.icon} {lesson.title.length > 20 ? lesson.title.slice(0, 20) + "..." : lesson.title}
               </button>
             )
           })}
-          {lessonIds.length > 8 && (
-            <span className="text-xs text-muted-foreground self-center">+{lessonIds.length - 8} more</span>
-          )}
         </div>
-
-        {/* Active lesson content */}
         {activeLesson && (
           <ScrollArea className="max-h-[350px]">
             <div className="space-y-3">
-              <h4 className="font-semibold text-sm flex items-center gap-2">
-                <span>{activeLesson.icon}</span>
-                {activeLesson.title}
-              </h4>
-              <div className="text-xs text-muted-foreground leading-relaxed whitespace-pre-line">
-                {activeLesson.content}
-              </div>
-              {activeLesson.example && (
-                <div className="space-y-2 mt-3">
-                  <h5 className="text-xs font-semibold flex items-center gap-1">
-                    <Lightbulb className="h-3 w-3 text-amber-500" />
-                    Example
-                  </h5>
-                  {activeLesson.example.bad && (
-                    <div className="rounded-md border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-900 p-2">
-                      <p className="text-xs text-red-700 dark:text-red-400 line-through">{activeLesson.example.bad}</p>
-                    </div>
-                  )}
-                  {activeLesson.example.good && (
-                    <div className="rounded-md border border-green-200 bg-green-50 dark:bg-green-950/30 dark:border-green-900 p-2">
-                      <p className="text-xs text-green-700 dark:text-green-400">{activeLesson.example.good}</p>
-                    </div>
-                  )}
-                  {activeLesson.example.why && (
-                    <p className="text-xs text-muted-foreground italic">{activeLesson.example.why}</p>
-                  )}
-                </div>
-              )}
+              <h4 className="font-semibold text-sm">{activeLesson.icon} {activeLesson.title}</h4>
+              <div className="text-xs text-muted-foreground whitespace-pre-line">{activeLesson.content}</div>
             </div>
           </ScrollArea>
         )}
@@ -131,87 +73,111 @@ function LessonCoachPanel({ lessonIds, onClose }) {
 }
 
 const workflowSteps = [
-  { id: "plan", label: "Reporting Plan", icon: BookOpen, required: true },
-  { id: "draft", label: "Draft", icon: FileText, required: true },
-  { id: "verification", label: "Verification", icon: CheckCircle2, required: true },
-  { id: "ai-review", label: "AI Review", icon: Brain, required: true },
-  { id: "revision", label: "Revision", icon: Sparkles, required: false },
-  { id: "reflection", label: "Reflection", icon: Eye, required: true },
-  { id: "submit", label: "Submit", icon: Shield, required: true },
+  { id: "plan", label: "Reporting Plan", icon: BookOpen },
+  { id: "draft", label: "Draft", icon: FileText },
+  { id: "verification", label: "Verification", icon: CheckCircle2 },
+  { id: "ai-review", label: "AI Review", icon: Brain },
+  { id: "revision", label: "Revision", icon: Sparkles },
+  { id: "reflection", label: "Reflection", icon: Eye },
+  { id: "submit", label: "Submit", icon: Shield },
 ]
 
-export default function EditorPage() {
+function EditorInner() {
+  const searchParams = useSearchParams()
+  const templateParam = searchParams.get("template")
+  const storyTemplate = templateParam ? getStoryTemplate(templateParam) : null
+  const demoAssignment = demoAssignments[0]
+  
+  const assignment = {
+    ...demoAssignment,
+    title: storyTemplate ? storyTemplate.name : demoAssignment.title,
+    brief: storyTemplate ? storyTemplate.description : demoAssignment.brief,
+    storyType: storyTemplate ? storyTemplate.category : demoAssignment.storyType,
+    constraints: {
+      wordCountMin: storyTemplate?.wordCountRange?.min ?? demoAssignment.constraints.wordCountMin,
+      wordCountMax: storyTemplate?.wordCountRange?.max ?? demoAssignment.constraints.wordCountMax
+    },
+    verificationRules: storyTemplate?.verificationDefaults
+      ? { minItems: storyTemplate.verificationDefaults.minItems }
+      : demoAssignment.verificationRules,
+  }
+  
+  const lessonIds = storyTemplate?.microLessonIds ?? ["lead_writing", "inverted_pyramid", "attribution_rules", "nut_graf"]
+  const reflectionPromptSet = getReflectionPromptSet(storyTemplate?.reflectionQuestionSetId ?? "news_reporting")
+  
   const [activeTab, setActiveTab] = useState("plan")
   const [draftContent, setDraftContent] = useState("")
   const [planCompleted, setPlanCompleted] = useState(false)
   const [showLessonCoach, setShowLessonCoach] = useState(true)
   const [reflectionAnswers, setReflectionAnswers] = useState({})
-  const [aiDisclosure, setAiDisclosure] = useState({ tools: "", usage: "", rejected: "", verification: "" })
+  const [aiDisclosure, setAiDisclosure] = useState({ tools: "", usage: "" })
   const [verificationItems, setVerificationItems] = useState([
-    { id: "1", claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM" },
+    { id: "1", claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM", riskLevel: "LOW" }
   ])
-
-  const assignment = demoAssignments[0] // Demo: County Budget assignment
-
-  // Micro-lesson IDs for this assignment type (demo: hard news)
-  const lessonIdsForAssignment = ["lead_writing", "inverted_pyramid", "attribution_rules", "nut_graf", "specificity", "active_voice", "right_of_reply", "news_values"]
-
-  // Reflection prompts for this assignment
-  const reflectionPromptSet = getReflectionPromptSet("news_reporting")
-
-  const wordCount = draftContent
-    .split(/\s+/)
-    .filter((w) => w.length > 0).length
-
-  const addVerificationItem = () => {
-    setVerificationItems([
-      ...verificationItems,
-      {
-        id: String(verificationItems.length + 1),
-        claim: "",
-        evidence: "",
-        sourceType: "URL",
-        sourceRef: "",
-        confidence: "MEDIUM",
-      },
-    ])
-  }
-
+  
+  const wordCount = draftContent.split(/\s+/).filter((w) => w.length > 0).length
+  const verifiedItems = verificationItems.filter((v) => v.claim && v.evidence)
+  
+  const addVerificationItem = () => setVerificationItems((prev) => [
+    ...prev,
+    { id: String(prev.length + 1), claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM", riskLevel: "LOW" }
+  ])
+  
+  const updateVerificationItem = (index, field, value) => setVerificationItems((prev) => {
+    const updated = [...prev]
+    updated[index] = { ...updated[index], [field]: value }
+    return updated
+  })
+  
   const completionStatus = {
     plan: planCompleted,
     draft: wordCount >= (assignment.constraints.wordCountMin || 0),
-    verification: verificationItems.filter((v) => v.claim && v.evidence).length >= assignment.verificationRules.minItems,
-    aiReview: false,
+    verification: verifiedItems.length >= (assignment.verificationRules.minItems || 0),
+    "ai-review": false,
     revision: false,
-    reflection: false,
-    submit: false,
+    reflection: Object.values(reflectionAnswers).join(" ").length >= 50,
+    submit: false
   }
-
-  const overallProgress =
-    Object.values(completionStatus).filter(Boolean).length /
-    Object.values(completionStatus).length * 100
+  
+  const overallProgress = (Object.values(completionStatus).filter(Boolean).length / Object.values(completionStatus).length) * 100
+  
+  const submissionForGate = {
+    plan: planCompleted ? { angle: "set" } : null,
+    verificationTable: verifiedItems.map((v) => ({ ...v, sources: v.sourceRef ? [v.sourceRef] : [] })),
+    sources: [],
+    draftText: draftContent,
+    reflection: Object.values(reflectionAnswers).join(" ") || null,
+    aiDisclosure: aiDisclosure.tools ? { declared: true } : null,
+    ethicsReview: {},
+    sections: {}
+  }
+  
+  const gateResult = canFinalSubmit(submissionForGate, {}, {
+    wordCountRange: [assignment.constraints.wordCountMin, assignment.constraints.wordCountMax],
+    requiredSections: []
+  })
+  
+  const wordCountLabel = assignment.constraints.wordCountMin + "-" + assignment.constraints.wordCountMax + " words"
 
   return (
     <div className="space-y-6">
-      {/* Assignment Header */}
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
             <span>{assignment.courseName}</span>
             <ChevronRight className="h-3 w-3" />
             <Badge variant="secondary" className="text-xs">
-              {STORY_TYPE_LABELS[assignment.storyType]}
+              {storyTemplate?.category || STORY_TYPE_LABELS[assignment.storyType]}
             </Badge>
+            {storyTemplate && (
+              <>
+                <ChevronRight className="h-3 w-3" />
+                <Badge variant="outline" className="text-xs font-mono">{templateParam}</Badge>
+              </>
+            )}
           </div>
           <h1 className="text-2xl font-bold tracking-tight">{assignment.title}</h1>
-          <p className="text-muted-foreground mt-1">
-            Due {new Date(assignment.dueAt).toLocaleDateString("en-GB", {
-              weekday: "long",
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-          </p>
+          <p className="text-muted-foreground mt-1">{wordCountLabel}</p>
         </div>
         <div className="text-right">
           <div className="text-sm text-muted-foreground mb-1">Progress</div>
@@ -222,48 +188,50 @@ export default function EditorPage() {
         </div>
       </div>
 
-      {/* Workflow Step Indicators */}
+      {storyTemplate && (
+        <div className="rounded-xl border bg-blue-50/50 dark:bg-blue-950/20 p-4">
+          <div className="flex items-start gap-3">
+            <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900">
+              <Layers className="h-4 w-4 text-blue-600" />
+            </div>
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-semibold text-sm">{storyTemplate.name}</span>
+                <Badge variant="secondary" className="text-xs">{storyTemplate.category}</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">{storyTemplate.description}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-1 overflow-x-auto pb-2">
         {workflowSteps.map((step, index) => {
           const isCompleted = completionStatus[step.id]
           const isActive = activeTab === step.id
+          const StepIcon = step.icon
+          let cn = "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium whitespace-nowrap "
+          if (isActive) cn += "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
+          else if (isCompleted) cn += "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
+          else cn += "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400"
+          
           return (
-            <button
-              key={step.id}
-              onClick={() => setActiveTab(step.id)}
-              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all whitespace-nowrap
-                ${isActive
-                  ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                  : isCompleted
-                  ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400"
-                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
-                }`}
-            >
-              {isCompleted && !isActive ? (
-                <CheckCircle2 className="h-3 w-3" />
-              ) : (
-                <step.icon className="h-3 w-3" />
-              )}
+            <button key={step.id} onClick={() => setActiveTab(step.id)} className={cn}>
+              {isCompleted && !isActive ? <CheckCircle2 className="h-3 w-3" /> : <StepIcon className="h-3 w-3" />}
               {step.label}
-              {index < workflowSteps.length - 1 && (
-                <ChevronRight className="h-3 w-3 ml-1 text-zinc-300 dark:text-zinc-600" />
-              )}
+              {index < workflowSteps.length - 1 && <ChevronRight className="h-3 w-3 ml-1 text-zinc-300" />}
             </button>
           )
         })}
       </div>
 
-      {/* Tab Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="hidden">
           {workflowSteps.map((step) => (
-            <TabsTrigger key={step.id} value={step.id}>
-              {step.label}
-            </TabsTrigger>
+            <TabsTrigger key={step.id} value={step.id}>{step.label}</TabsTrigger>
           ))}
         </TabsList>
 
-        {/* ─── Reporting Plan ──────────────── */}
         <TabsContent value="plan" className="space-y-6">
           <Card>
             <CardHeader>
@@ -271,70 +239,25 @@ export default function EditorPage() {
                 <BookOpen className="h-5 w-5" />
                 Reporting Plan
               </CardTitle>
-              <CardDescription>
-                Plan your reporting approach before you start writing. What&apos;s your angle? Who will you talk to?
-              </CardDescription>
+              <CardDescription>Plan your reporting approach before you start writing.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="angle">Story Angle</Label>
-                <Textarea
-                  id="angle"
-                  placeholder="What is the main angle of your story? What makes it newsworthy?"
-                  className="min-h-20"
-                />
+                <Label htmlFor="angle">Story Angle *</Label>
+                <Textarea id="angle" placeholder="What is the main angle or focus of your story?" className="min-h-[80px]" />
               </div>
-
               <div className="space-y-2">
                 <Label>Key Questions to Answer</Label>
-                <p className="text-xs text-muted-foreground">
-                  What questions must your story answer for the reader?
-                </p>
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <Input
-                    key={i}
-                    placeholder={`Question ${i}`}
-                    className="mb-2"
-                  />
+                  <Input key={i} placeholder={"Question " + i} className="mb-2" />
                 ))}
               </div>
-
-              <div className="space-y-2">
-                <Label>Sources to Seek</Label>
-                <p className="text-xs text-muted-foreground">
-                  Who do you need to interview or contact?
-                </p>
-                {[1, 2, 3].map((i) => (
-                  <Input
-                    key={i}
-                    placeholder={`Source ${i} — name/title/role`}
-                    className="mb-2"
-                  />
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Documents to Consult</Label>
-                <Textarea
-                  placeholder="List documents, reports, datasets you'll use..."
-                  className="min-h-20"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Risks & Unknowns</Label>
-                <Textarea
-                  placeholder="What might go wrong? What don't you know yet?"
-                  className="min-h-20"
-                />
-              </div>
-
-              <Button
-                onClick={() => {
+              <Button 
+                onClick={() => { 
                   setPlanCompleted(true)
-                  toast.success("Reporting plan saved!")
-                  setActiveTab("draft")
-                }}
+                  toast.success("Plan saved!")
+                  setActiveTab("draft") 
+                }} 
                 className="gap-2"
               >
                 Save Plan & Continue <ChevronRight className="h-4 w-4" />
@@ -343,7 +266,6 @@ export default function EditorPage() {
           </Card>
         </TabsContent>
 
-        {/* ─── Draft Editor ──────────────── */}
         <TabsContent value="draft" className="space-y-6">
           <Card>
             <CardHeader>
@@ -353,99 +275,54 @@ export default function EditorPage() {
                     <FileText className="h-5 w-5" />
                     Draft Editor
                   </CardTitle>
-                  <CardDescription>
-                    Write your {STORY_TYPE_LABELS[assignment.storyType].toLowerCase()} story.
-                  </CardDescription>
+                  <CardDescription>Write your {storyTemplate?.name || "story"}.</CardDescription>
                 </div>
                 <div className="text-right text-sm">
-                  <span
-                    className={`font-mono font-medium ${
-                      wordCount < (assignment.constraints.wordCountMin || 0)
-                        ? "text-red-600"
-                        : wordCount > (assignment.constraints.wordCountMax || 9999)
-                        ? "text-amber-600"
-                        : "text-green-600"
-                    }`}
-                  >
+                  <span className={"font-mono font-medium " + (wordCount < assignment.constraints.wordCountMin ? "text-red-600" : "text-green-600")}>
                     {wordCount}
                   </span>
-                  <span className="text-muted-foreground">
-                    {" "}/ {assignment.constraints.wordCountMin}–{assignment.constraints.wordCountMax} words
-                  </span>
+                  <span className="text-muted-foreground"> / {wordCountLabel}</span>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              {/* Assignment Brief Collapsible */}
               <details className="mb-6 rounded-lg border bg-zinc-50 dark:bg-zinc-900">
-                <summary className="cursor-pointer px-4 py-3 text-sm font-medium">
-                  📋 View Assignment Brief
-                </summary>
-                <div className="px-4 pb-4 text-sm text-muted-foreground whitespace-pre-line">
-                  {assignment.brief}
-                </div>
+                <summary className="cursor-pointer px-4 py-3 text-sm font-medium">View Brief</summary>
+                <div className="px-4 pb-4 text-sm text-muted-foreground">{assignment.brief}</div>
               </details>
-
-              <div className="space-y-2">
-                <Label htmlFor="headline">Headline</Label>
-                <Input
-                  id="headline"
-                  placeholder="Write your headline..."
-                  className="text-lg font-semibold"
-                />
-              </div>
-
-              {/* Lesson Coach toggle */}
+              
               {!showLessonCoach && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 text-blue-600"
-                  onClick={() => setShowLessonCoach(true)}
-                >
-                  <GraduationCap className="h-3.5 w-3.5" />
-                  Show Lesson Coach
+                <Button variant="outline" size="sm" className="gap-2 text-blue-600 mb-4" onClick={() => setShowLessonCoach(true)}>
+                  <GraduationCap className="h-3.5 w-3.5" />Show Lesson Coach
                 </Button>
               )}
-
-              <div className={`grid gap-4 ${showLessonCoach ? "lg:grid-cols-[1fr_340px]" : ""}`}>
-                <div className="space-y-2">
-                  <Label htmlFor="draft">Story Body</Label>
-                  <Textarea
-                    id="draft"
-                    value={draftContent}
-                    onChange={(e) => setDraftContent(e.target.value)}
-                    placeholder="Start writing your story here...
-
-Remember:
-• Lead with the most newsworthy element
-• Attribute all claims to named sources
-• Use specific figures, not vague language
-• Follow the inverted pyramid structure"
-                    className="min-h-[400px] font-mono text-sm leading-relaxed"
-                  />
+              
+              <div className={showLessonCoach ? "grid gap-4 lg:grid-cols-[1fr_340px]" : ""}>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="headline">Headline</Label>
+                    <Input id="headline" placeholder="Write your headline..." className="text-base font-semibold" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="draft">Story Body</Label>
+                    <Textarea 
+                      id="draft" 
+                      value={draftContent} 
+                      onChange={(e) => setDraftContent(e.target.value)} 
+                      placeholder="Start writing your story..." 
+                      className="min-h-[400px] font-mono text-sm" 
+                    />
+                  </div>
                 </div>
-
-                {/* Lesson Coach Panel */}
-                {showLessonCoach && (
-                  <LessonCoachPanel
-                    lessonIds={lessonIdsForAssignment}
-                    onClose={() => setShowLessonCoach(false)}
-                  />
-                )}
+                {showLessonCoach && <LessonCoachPanel lessonIds={lessonIds} onClose={() => setShowLessonCoach(false)} />}
               </div>
-
+              
               <div className="mt-4 flex items-center justify-between">
-                <Button variant="outline" size="sm">
-                  Save Draft
-                </Button>
-                <Button
-                  onClick={() => {
-                    toast.success("Draft saved! Now complete your verification table.")
-                    setActiveTab("verification")
-                  }}
-                  className="gap-2"
-                  disabled={wordCount < (assignment.constraints.wordCountMin || 0)}
+                <Button variant="outline" size="sm">Save Draft</Button>
+                <Button 
+                  onClick={() => { toast.success("Draft saved!"); setActiveTab("verification") }} 
+                  className="gap-2" 
+                  disabled={wordCount < assignment.constraints.wordCountMin}
                 >
                   Continue to Verification <ChevronRight className="h-4 w-4" />
                 </Button>
@@ -454,7 +331,6 @@ Remember:
           </Card>
         </TabsContent>
 
-        {/* ─── Verification Table ──────────────── */}
         <TabsContent value="verification" className="space-y-6">
           <Card>
             <CardHeader>
@@ -463,117 +339,101 @@ Remember:
                 Verification Table
               </CardTitle>
               <CardDescription>
-                Map every factual claim in your story to evidence and sources.
-                You need at least <strong>{assignment.verificationRules.minItems}</strong> items
-                with at least <strong>{assignment.verificationRules.minHighConfidence}</strong> high-confidence items.
+                Map every factual claim to evidence. Need at least <strong>{assignment.verificationRules.minItems}</strong> items.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Progress indicator */}
               <div className="mb-6 rounded-lg border bg-zinc-50 p-4 dark:bg-zinc-900">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-medium">Verification Progress</span>
-                  <span className="text-sm text-muted-foreground">
-                    {verificationItems.filter((v) => v.claim && v.evidence).length} / {assignment.verificationRules.minItems} required
-                  </span>
+                  <span className="text-sm font-medium">Progress</span>
+                  <span className="text-sm text-muted-foreground">{verifiedItems.length} / {assignment.verificationRules.minItems}</span>
                 </div>
-                <Progress
-                  value={
-                    (verificationItems.filter((v) => v.claim && v.evidence).length /
-                      assignment.verificationRules.minItems) *
-                    100
-                  }
-                  className="h-2"
-                />
+                <Progress value={(verifiedItems.length / Math.max(assignment.verificationRules.minItems, 1)) * 100} className="h-2" />
               </div>
-
-              {/* Verification items */}
+              
               <div className="space-y-4">
                 {verificationItems.map((item, index) => (
                   <div key={item.id} className="rounded-xl border p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-muted-foreground">
-                        Item #{index + 1}
-                      </span>
-                      <Select defaultValue={item.confidence}>
-                        <SelectTrigger className="w-32 h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="HIGH">🟢 High</SelectItem>
-                          <SelectItem value="MEDIUM">🟡 Medium</SelectItem>
-                          <SelectItem value="LOW">🔴 Low</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <span className="text-sm font-medium text-muted-foreground">Claim #{index + 1}</span>
+                      <div className="flex gap-2">
+                        <Select value={item.riskLevel} onValueChange={(v) => updateVerificationItem(index, "riskLevel", v)}>
+                          <SelectTrigger className="w-36 h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="LOW">Low risk</SelectItem>
+                            <SelectItem value="MEDIUM">Medium risk</SelectItem>
+                            <SelectItem value="HIGH">High risk</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select value={item.confidence} onValueChange={(v) => updateVerificationItem(index, "confidence", v)}>
+                          <SelectTrigger className="w-32 h-8 text-xs"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="HIGH">High conf.</SelectItem>
+                            <SelectItem value="MEDIUM">Medium conf.</SelectItem>
+                            <SelectItem value="LOW">Low conf.</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-
+                    
+                    {item.riskLevel === "HIGH" && (
+                      <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 rounded-md px-2 py-1.5">
+                        <AlertTriangle className="h-3 w-3" />
+                        High-risk claim: requires 2 independent sources
+                      </div>
+                    )}
+                    
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-1">
-                        <Label className="text-xs">Claim (from your story)</Label>
-                        <Textarea
-                          placeholder="Quote the factual claim from your draft..."
-                          className="min-h-16 text-sm"
-                          value={item.claim}
-                          onChange={(e) => {
-                            const updated = [...verificationItems]
-                            updated[index].claim = e.target.value
-                            setVerificationItems(updated)
-                          }}
+                        <Label className="text-xs">Claim</Label>
+                        <Textarea 
+                          placeholder="Quote the factual claim from your story..." 
+                          className="min-h-[64px] text-sm" 
+                          value={item.claim} 
+                          onChange={(e) => updateVerificationItem(index, "claim", e.target.value)} 
                         />
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Evidence</Label>
-                        <Textarea
-                          placeholder="What evidence supports this claim?"
-                          className="min-h-16 text-sm"
-                          value={item.evidence}
-                          onChange={(e) => {
-                            const updated = [...verificationItems]
-                            updated[index].evidence = e.target.value
-                            setVerificationItems(updated)
-                          }}
+                        <Textarea 
+                          placeholder="Supporting evidence or quote..." 
+                          className="min-h-[64px] text-sm" 
+                          value={item.evidence} 
+                          onChange={(e) => updateVerificationItem(index, "evidence", e.target.value)} 
                         />
                       </div>
                     </div>
-
+                    
                     <div className="grid gap-3 md:grid-cols-2">
                       <div className="space-y-1">
                         <Label className="text-xs">Source Type</Label>
-                        <Select defaultValue={item.sourceType}>
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
+                        <Select value={item.sourceType} onValueChange={(v) => updateVerificationItem(index, "sourceType", v)}>
+                          <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="URL">🔗 URL/Link</SelectItem>
-                            <SelectItem value="INTERVIEW">🎙️ Interview</SelectItem>
-                            <SelectItem value="DOCUMENT">📄 Document</SelectItem>
-                            <SelectItem value="OBSERVATION">👁️ Observation</SelectItem>
-                            <SelectItem value="DATASET">📊 Dataset</SelectItem>
-                            <SelectItem value="OTHER">📌 Other</SelectItem>
+                            <SelectItem value="URL">URL/Website</SelectItem>
+                            <SelectItem value="INTERVIEW">Interview</SelectItem>
+                            <SelectItem value="DOCUMENT">Document</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-1">
                         <Label className="text-xs">Source Reference</Label>
-                        <Input
-                          placeholder="URL, document name, or interviewee"
-                          className="h-8 text-xs"
+                        <Input 
+                          placeholder="URL or interviewee name" 
+                          className="h-8 text-xs" 
+                          value={item.sourceRef} 
+                          onChange={(e) => updateVerificationItem(index, "sourceRef", e.target.value)} 
                         />
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
-
+              
               <div className="mt-4 flex items-center justify-between">
-                <Button variant="outline" size="sm" onClick={addVerificationItem}>
-                  + Add Verification Item
-                </Button>
-                <Button
-                  onClick={() => {
-                    toast.success("Verification table saved! Requesting AI review...")
-                    setActiveTab("ai-review")
-                  }}
+                <Button variant="outline" size="sm" onClick={addVerificationItem}>+ Add Item</Button>
+                <Button 
+                  onClick={() => { toast.success("Verification saved!"); setActiveTab("ai-review") }} 
                   className="gap-2"
                 >
                   Save & Request AI Review <Brain className="h-4 w-4" />
@@ -583,283 +443,111 @@ Remember:
           </Card>
         </TabsContent>
 
-        {/* ─── AI Review ──────────────── */}
         <TabsContent value="ai-review" className="space-y-6">
-          <div className="rounded-xl border bg-gradient-to-r from-blue-50 via-purple-50 to-blue-50 p-6 dark:from-blue-950/30 dark:via-purple-950/30 dark:to-blue-950/30 dark:border-zinc-800">
+          <div className="rounded-xl border bg-gradient-to-r from-blue-50 via-purple-50 to-blue-50 p-6 dark:from-blue-950/30 dark:via-purple-950/30 dark:to-blue-950/30">
             <div className="flex items-center gap-3 mb-2">
               <Brain className="h-6 w-6 text-purple-600" />
               <h2 className="text-lg font-bold">AI Edit Desk Review</h2>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Four AI editors have reviewed your draft. Address the must-fix items before submitting your revision.
-            </p>
+            <p className="text-sm text-muted-foreground">Four AI editors have reviewed your draft.</p>
           </div>
-
-          {/* AI Editor Tabs */}
+          
           <Tabs defaultValue="copy" className="space-y-4">
             <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="copy" className="gap-1 text-xs">
-                ✍️ Copy Editor
-              </TabsTrigger>
-              <TabsTrigger value="factcheck" className="gap-1 text-xs">
-                🔍 Fact-checker
-              </TabsTrigger>
-              <TabsTrigger value="ethics" className="gap-1 text-xs">
-                ⚖️ Ethics
-              </TabsTrigger>
-              <TabsTrigger value="framing" className="gap-1 text-xs">
-                🔎 Framing
-              </TabsTrigger>
+              <TabsTrigger value="copy">Copy Editor</TabsTrigger>
+              <TabsTrigger value="factcheck">Fact-checker</TabsTrigger>
+              <TabsTrigger value="ethics">Ethics</TabsTrigger>
+              <TabsTrigger value="framing">Framing</TabsTrigger>
             </TabsList>
-
-            {/* Copy Editor */}
+            
             <TabsContent value="copy">
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Copy Editor Review</CardTitle>
-                    <Badge variant="outline">Structure Score: {demoCopyEditorReview.structureScore}/5</Badge>
-                  </div>
+                  <CardTitle className="text-base">Copy Editor</CardTitle>
                   <CardDescription>{demoCopyEditorReview.overallNotes}</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <h3 className="font-semibold text-sm flex items-center gap-2">
-                    Must-Fix Items
-                    <Badge variant="destructive" className="text-xs">
-                      {demoCopyEditorReview.mustFix.length}
-                    </Badge>
-                  </h3>
+                <CardContent>
+                  <h3 className="font-semibold text-sm mb-2">Must-Fix Items</h3>
                   {demoCopyEditorReview.mustFix.map((item) => (
-                    <div
-                      key={item.id}
-                      className={`rounded-lg border p-4 space-y-2 ${
-                        item.severity === "critical"
-                          ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950"
-                          : item.severity === "important"
-                          ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950"
-                          : "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <Badge
-                          variant={item.severity === "critical" ? "destructive" : "secondary"}
-                          className="text-xs"
-                        >
-                          {item.severity}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">{item.category}</span>
-                      </div>
-                      <blockquote className="border-l-2 border-zinc-300 pl-3 text-sm italic text-muted-foreground dark:border-zinc-700">
-                        &ldquo;{item.quote}&rdquo;
-                      </blockquote>
+                    <div key={item.id} className="rounded-lg border p-3 mb-2">
                       <p className="text-sm"><strong>Issue:</strong> {item.issue}</p>
-                      <p className="text-sm text-green-700 dark:text-green-400"><strong>Fix:</strong> {item.fix}</p>
-                    </div>
-                  ))}
-
-                  <Separator />
-
-                  <h3 className="font-semibold text-sm">Rewrite Examples</h3>
-                  {demoCopyEditorReview.rewriteExamples.map((ex, i) => (
-                    <div key={i} className="rounded-lg border p-4 space-y-2">
-                      <p className="text-sm text-red-600 line-through dark:text-red-400">{ex.original}</p>
-                      <p className="text-sm text-green-700 dark:text-green-400">{ex.rewritten}</p>
-                      <p className="text-xs text-muted-foreground">{ex.explanation}</p>
+                      <p className="text-sm text-green-700"><strong>Fix:</strong> {item.fix}</p>
                     </div>
                   ))}
                 </CardContent>
               </Card>
             </TabsContent>
-
-            {/* Fact-checker */}
+            
             <TabsContent value="factcheck">
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Fact-checker Review</CardTitle>
-                    <Badge variant="outline">
-                      Verification Gap: {demoFactCheckerReview.verificationGapScore}/10
-                    </Badge>
-                  </div>
+                  <CardTitle className="text-base">Fact-checker</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <h3 className="font-semibold text-sm flex items-center gap-2">
-                    Unsupported Claims
-                    <Badge variant="destructive" className="text-xs">
-                      {demoFactCheckerReview.unsupportedClaims.length}
-                    </Badge>
-                  </h3>
-                  {demoFactCheckerReview.unsupportedClaims.map((claim, i) => (
-                    <div key={i} className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-2 dark:border-red-900 dark:bg-red-950">
-                      <blockquote className="border-l-2 border-red-300 pl-3 text-sm italic dark:border-red-700">
-                        &ldquo;{claim.quote}&rdquo;
-                      </blockquote>
-                      <p className="text-sm"><strong>Why unsupported:</strong> {claim.reason}</p>
-                      <p className="text-sm text-blue-700 dark:text-blue-400">
-                        <strong>Evidence needed:</strong> {claim.evidenceNeeded}
-                      </p>
+                <CardContent>
+                  {demoFactCheckerReview.unsupportedClaims.map((c, i) => (
+                    <div key={i} className="rounded-lg border border-red-200 bg-red-50 p-3 mb-2">
+                      <p className="text-sm"><strong>Unsupported:</strong> {c.quote}</p>
+                      <p className="text-sm">{c.reason}</p>
                     </div>
                   ))}
-
-                  <Separator />
-
-                  <h3 className="font-semibold text-sm">Questions for You</h3>
-                  <ul className="space-y-2">
-                    {demoFactCheckerReview.questionsForReporter.map((q, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <span className="text-blue-600 font-medium">Q{i + 1}.</span>
-                        {q}
-                      </li>
-                    ))}
-                  </ul>
                 </CardContent>
               </Card>
             </TabsContent>
-
-            {/* Ethics */}
+            
             <TabsContent value="ethics">
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">Ethics & Law Review</CardTitle>
-                    <Badge
-                      variant={demoEthicsReview.riskLevel === "HIGH" ? "destructive" : "secondary"}
-                      className="text-xs"
-                    >
-                      Risk: {demoEthicsReview.riskLevel}
-                    </Badge>
-                  </div>
+                  <CardTitle className="text-base">Ethics Review</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {demoEthicsReview.riskIssues.length > 0 ? (
-                    demoEthicsReview.riskIssues.map((issue, i) => (
-                      <div key={i} className="rounded-lg border p-4 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">{issue.category}</Badge>
-                          <Badge
-                            variant={issue.severity === "high" ? "destructive" : "secondary"}
-                            className="text-xs"
-                          >
-                            {issue.severity}
-                          </Badge>
-                        </div>
-                        <p className="text-sm">{issue.description}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-green-600">No significant ethical or legal risks identified.</p>
-                  )}
-
-                  <Separator />
-
-                  <h3 className="font-semibold text-sm">Harm Mitigation Steps</h3>
-                  <ul className="space-y-2">
-                    {demoEthicsReview.harmMitigationSteps.map((step, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-                        {step}
-                      </li>
-                    ))}
-                  </ul>
+                <CardContent>
+                  {demoEthicsReview.riskIssues.map((issue, i) => (
+                    <div key={i} className="rounded-lg border p-3 mb-2">
+                      <Badge className="text-xs mb-1">{issue.category}</Badge>
+                      <p className="text-sm">{issue.description}</p>
+                    </div>
+                  ))}
                 </CardContent>
               </Card>
             </TabsContent>
-
-            {/* Framing Analyst */}
+            
             <TabsContent value="framing">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">Framing Analysis</CardTitle>
-                  <CardDescription>
-                    Dominant Frame: <strong>{demoFramingReview.dominantFrame}</strong>
-                  </CardDescription>
+                  <CardDescription>Dominant Frame: {demoFramingReview.dominantFrame}</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="rounded-lg border bg-purple-50 p-4 dark:bg-purple-950 dark:border-purple-800">
-                    <h3 className="font-semibold text-sm mb-2">Ideology & Power Notes</h3>
-                    <p className="text-sm">{demoFramingReview.ideologyPowerNotes}</p>
-                  </div>
-
+                <CardContent>
                   <h3 className="font-semibold text-sm">Missing Voices</h3>
-                  <ul className="space-y-1">
-                    {demoFramingReview.missingVoices.map((voice, i) => (
-                      <li key={i} className="flex items-center gap-2 text-sm">
-                        <span className="text-amber-600">⚠</span> {voice}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <h3 className="font-semibold text-sm">Loaded Language</h3>
-                  {demoFramingReview.loadedLanguageFlags.map((flag, i) => (
-                    <div key={i} className="rounded-lg border p-3 space-y-1">
-                      <p className="text-sm">
-                        <strong className="text-red-600 dark:text-red-400">&ldquo;{flag.phrase}&rdquo;</strong> — {flag.issue}
-                      </p>
-                      <p className="text-sm text-green-700 dark:text-green-400">
-                        Alternative: {flag.alternative}
-                      </p>
-                    </div>
-                  ))}
-
-                  <h3 className="font-semibold text-sm">Alternative Headlines</h3>
-                  {demoFramingReview.alternativeHeadlines.map((ah, i) => (
-                    <div key={i} className="rounded-lg border p-3">
-                      <p className="text-sm font-medium">&ldquo;{ah.headline}&rdquo;</p>
-                      <p className="text-xs text-muted-foreground mt-1">{ah.framingImpact}</p>
-                    </div>
-                  ))}
-
-                  <Separator />
-
-                  <h3 className="font-semibold text-sm">Reflection Prompts for You</h3>
-                  <ul className="space-y-2">
-                    {demoFramingReview.reflectionPrompts.map((prompt, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <Eye className="h-4 w-4 text-purple-600 mt-0.5 shrink-0" />
-                        {prompt}
-                      </li>
+                  <ul className="list-disc list-inside">
+                    {demoFramingReview.missingVoices.map((v, i) => (
+                      <li key={i} className="text-sm">{v}</li>
                     ))}
                   </ul>
                 </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
-
+          
           <div className="flex justify-end">
-            <Button
-              onClick={() => setActiveTab("revision")}
-              className="gap-2"
-            >
+            <Button onClick={() => setActiveTab("revision")} className="gap-2">
               Start Revision <Sparkles className="h-4 w-4" />
             </Button>
           </div>
         </TabsContent>
 
-        {/* ─── Revision ──────────────── */}
         <TabsContent value="revision" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5" />
-                Draft v2 — Revision
+                Draft v2 - Revision
               </CardTitle>
-              <CardDescription>
-                Address the AI feedback and improve your story. Your v1 and v2 will be compared side-by-side during grading.
-              </CardDescription>
+              <CardDescription>Address AI feedback and improve your draft.</CardDescription>
             </CardHeader>
             <CardContent>
-              <Textarea
-                placeholder="Write your revised draft here. Address the must-fix items from the AI review..."
-                className="min-h-[400px] font-mono text-sm leading-relaxed"
-              />
+              <Textarea placeholder="Write your revised draft here..." className="min-h-[400px] font-mono text-sm" />
               <div className="mt-4 flex justify-end">
-                <Button
-                  onClick={() => {
-                    toast.success("Revision saved!")
-                    setActiveTab("reflection")
-                  }}
-                  className="gap-2"
-                >
+                <Button onClick={() => { toast.success("Revision saved!"); setActiveTab("reflection") }} className="gap-2">
                   Save & Continue <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -867,7 +555,6 @@ Remember:
           </Card>
         </TabsContent>
 
-        {/* ─── Reflection & Disclosure ──────────────── */}
         <TabsContent value="reflection" className="space-y-6">
           <Card>
             <CardHeader>
@@ -875,225 +562,111 @@ Remember:
                 <Eye className="h-5 w-5" />
                 Reflection & AI Disclosure
               </CardTitle>
-              <CardDescription>
-                Reflect on your reporting process and disclose your AI usage honestly.
-              </CardDescription>
+              <CardDescription>Reflect on your reporting process and disclose AI usage.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-4">
-                <Label>Reflection</Label>
-                <p className="text-xs text-muted-foreground">
-                  Answer at least 3 of the following prompts. Reflect deeply — your reflection is graded.
-                </p>
-                {reflectionPromptSet.prompts.map((prompt) => (
+                <Label>Reflection Prompts</Label>
+                {(reflectionPromptSet?.prompts || []).map((prompt) => (
                   <div key={prompt.id} className="space-y-2 rounded-lg border p-4">
                     <Label className="text-sm font-medium">{prompt.question}</Label>
-                    {prompt.hint && (
-                      <p className="text-xs text-muted-foreground italic flex items-start gap-1">
-                        <Lightbulb className="h-3 w-3 mt-0.5 shrink-0 text-amber-500" />
-                        {prompt.hint}
-                      </p>
-                    )}
-                    <Textarea
-                      placeholder="Write your reflection..."
-                      className="min-h-20 text-sm"
-                      value={reflectionAnswers[prompt.id] || ""}
-                      onChange={(e) => setReflectionAnswers(prev => ({ ...prev, [prompt.id]: e.target.value }))}
+                    <Textarea 
+                      placeholder="Write your reflection..." 
+                      className="min-h-[80px] text-sm" 
+                      value={reflectionAnswers[prompt.id] || ""} 
+                      onChange={(e) => setReflectionAnswers((prev) => ({ ...prev, [prompt.id]: e.target.value }))} 
                     />
                   </div>
                 ))}
               </div>
-
+              
               <Separator />
-
+              
               <h3 className="font-semibold">AI Usage Disclosure</h3>
-              <p className="text-xs text-muted-foreground">
-                Honest disclosure is part of your grade. This builds professional integrity.
-              </p>
-
               <div className="space-y-2">
                 <Label>AI Tools Used</Label>
-                <Input placeholder="e.g., NewsroomLab AI editors, ChatGPT for research..." />
+                <Input 
+                  placeholder="e.g., NewsroomLab AI editors, ChatGPT..." 
+                  value={aiDisclosure.tools} 
+                  onChange={(e) => setAiDisclosure((p) => ({ ...p, tools: e.target.value }))} 
+                />
               </div>
-
               <div className="space-y-2">
                 <Label>What Did You Use AI For?</Label>
-                <Textarea
-                  placeholder="e.g., I used the copy editor to identify weak leads, the fact-checker to find gaps..."
-                  className="min-h-20"
+                <Textarea 
+                  placeholder="e.g., I used the copy editor for grammar suggestions..." 
+                  className="min-h-[80px]" 
+                  value={aiDisclosure.usage} 
+                  onChange={(e) => setAiDisclosure((p) => ({ ...p, usage: e.target.value }))} 
                 />
               </div>
-
-              <div className="space-y-2">
-                <Label>What AI Suggestions Did You Reject, and Why?</Label>
-                <Textarea
-                  placeholder="e.g., The framing analyst suggested I was editorialising, but I disagree because..."
-                  className="min-h-20"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Verification Statement</Label>
-                <Textarea
-                  placeholder="I confirm that all facts in this story have been independently verified to the best of my ability..."
-                  className="min-h-16"
-                />
-              </div>
-
+              
               <div className="flex justify-end">
-                <Button
-                  onClick={() => {
-                    toast.success("Reflection saved!")
-                    setActiveTab("submit")
-                  }}
-                  className="gap-2"
-                >
-                  Save & Continue to Submit <ChevronRight className="h-4 w-4" />
+                <Button onClick={() => { toast.success("Reflection saved!"); setActiveTab("submit") }} className="gap-2">
+                  Continue to Submit <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
 
-        {/* ─── Final Submit ──────────────── */}
         <TabsContent value="submit" className="space-y-6">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Shield className="h-5 w-5" />
-                Final Submission
+                Final Submission Gate
               </CardTitle>
-              <CardDescription>
-                Review your submission checklist. All gates must be passed before you can submit.
-              </CardDescription>
+              <CardDescription>All gates must pass before you can submit.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Verification Gate Checklist */}
-              {(() => {
-                const reflectionText = Object.values(reflectionAnswers).join(" ")
-                const submission = {
-                  plan: planCompleted ? { angle: "set", sources: ["source1"] } : null,
-                  verificationTable: verificationItems.filter(v => v.claim && v.evidence).map(v => ({
-                    ...v,
-                    sources: v.sourceRef ? [{ name: v.sourceRef, url: v.sourceRef }] : [],
-                    status: "verified",
-                  })),
-                  sources: verificationItems.filter(v => v.sourceRef).map(v => ({ name: v.sourceRef, url: v.sourceRef })),
-                  draftText: draftContent,
-                  reflection: reflectionText.length > 0 ? reflectionText : null,
-                  aiDisclosure: aiDisclosure.tools || aiDisclosure.usage ? { declared: true } : null,
-                  ethicsReview: {},
-                  sections: {},
-                }
-                const templateConfig = {
-                  wordCountRange: [assignment.constraints.wordCountMin, assignment.constraints.wordCountMax],
-                }
-                const rules = {
-                  verificationMinRows: assignment.verificationRules.minItems,
-                  requireAllSections: false,
-                  requireEthicsMitigation: false,
-                  requireRightOfReply: false,
-                }
-                const result = canFinalSubmit(submission, rules, templateConfig)
-                const gateProgress = getGateProgress(submission, rules, templateConfig)
-
-                const gateLabels = {
-                  plan: "Reporting plan completed",
-                  verification: `Verification table (${verificationItems.filter(v => v.claim && v.evidence).length}/${assignment.verificationRules.minItems} items)`,
-                  word_count: `Draft meets word count (${wordCount}/${assignment.constraints.wordCountMin}–${assignment.constraints.wordCountMax})`,
-                  ai_disclosure: "AI disclosure completed",
-                  reflection: "Reflection completed (min 100 characters)",
-                }
-
-                return (
-                  <>
-                    {/* Summary */}
-                    <div className={`rounded-lg border p-3 text-sm ${result.allowed ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950 text-green-700 dark:text-green-400" : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950 text-amber-700 dark:text-amber-400"}`}>
-                      {result.summary}
-                    </div>
-
-                    {Object.entries(gateLabels).map(([gate, label]) => {
-                      const status = gateProgress.gates[gate]
-                      const passed = status === "pass"
-                      const warn = status === "warn"
-                      return (
-                        <div
-                          key={gate}
-                          className={`flex items-center gap-3 rounded-lg border p-3 ${
-                            passed
-                              ? "border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950"
-                              : warn
-                              ? "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950"
-                              : "border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900"
-                          }`}
-                        >
-                          {passed ? (
-                            <CheckCircle2 className="h-5 w-5 text-green-600 shrink-0" />
-                          ) : (
-                            <Lock className="h-5 w-5 text-zinc-400 shrink-0" />
-                          )}
-                          <span className={`text-sm ${passed ? "text-green-700 dark:text-green-400" : "text-muted-foreground"}`}>
-                            {label}
-                          </span>
-                        </div>
-                      )
-                    })}
-
-                    {/* Show specific failures */}
-                    {result.failures.length > 0 && (
-                      <div className="space-y-2 mt-2">
-                        <h4 className="text-xs font-semibold text-red-600">Issues to resolve:</h4>
-                        {result.failures.map((f, i) => (
-                          <p key={i} className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1">
-                            <span>•</span> {f.message}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-
-                    {result.warnings.length > 0 && (
-                      <div className="space-y-2 mt-2">
-                        <h4 className="text-xs font-semibold text-amber-600">Warnings:</h4>
-                        {result.warnings.map((w, i) => (
-                          <p key={i} className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1">
-                            <span>⚠</span> {w.message}
-                          </p>
-                        ))}
-                      </div>
-                    )}
-
-                    <Separator />
-
-                    <Button
-                      size="lg"
-                      className="w-full gap-2"
-                      disabled={!result.allowed}
-                      onClick={() => toast.success("Submission received! Your lecturer will review and grade it.")}
-                    >
-                      {result.allowed ? (
-                        <>
-                          <Shield className="h-4 w-4" />
-                          Submit Final Version
-                        </>
-                      ) : (
-                        <>
-                          <Lock className="h-4 w-4" />
-                          Submit Final Version
-                        </>
-                      )}
-                    </Button>
-                    <p className="text-xs text-center text-muted-foreground">
-                      {result.allowed
-                        ? "All gates passed. Click to submit your final version."
-                        : "Complete all requirements above to unlock submission."}
-                    </p>
-                  </>
-                )
-              })()}
+              <div className={"rounded-lg border p-3 text-sm " + (gateResult.allowed ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700")}>
+                {gateResult.allowed ? "All gates passed. Ready to submit!" : gateResult.failures.length + " gate(s) still need attention."}
+              </div>
+              
+              {[
+                { gate: "plan", label: "Reporting plan completed", passed: planCompleted },
+                { gate: "draft", label: "Draft meets word count (" + wordCount + " / " + wordCountLabel + ")", passed: wordCount >= assignment.constraints.wordCountMin },
+                { gate: "verification", label: "Verification table (" + verifiedItems.length + " / " + assignment.verificationRules.minItems + " items)", passed: verifiedItems.length >= assignment.verificationRules.minItems },
+                { gate: "reflection", label: "Reflection completed", passed: Object.values(reflectionAnswers).join(" ").length >= 100 },
+                { gate: "disclosure", label: "AI disclosure completed", passed: !!(aiDisclosure.tools || aiDisclosure.usage) },
+              ].map(({ gate, label, passed }) => (
+                <div key={gate} className={"flex items-center gap-3 rounded-lg border p-3 " + (passed ? "border-green-200 bg-green-50" : "border-zinc-200 bg-zinc-50")}>
+                  {passed ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <Lock className="h-5 w-5 text-zinc-400" />}
+                  <span className={"text-sm " + (passed ? "text-green-700" : "text-muted-foreground")}>{label}</span>
+                </div>
+              ))}
+              
+              <Separator />
+              
+              <Button 
+                size="lg" 
+                className="w-full gap-2" 
+                disabled={!gateResult.allowed} 
+                onClick={() => toast.success("Submission received! Your work is now with your lecturer.")}
+              >
+                {gateResult.allowed ? (
+                  <><Shield className="h-4 w-4" />Submit Final Version</>
+                ) : (
+                  <><Lock className="h-4 w-4" />Submit (Locked)</>
+                )}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+export default function EditorPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center py-24">
+        <div className="text-muted-foreground">Loading editor...</div>
+      </div>
+    }>
+      <EditorInner />
+    </Suspense>
   )
 }

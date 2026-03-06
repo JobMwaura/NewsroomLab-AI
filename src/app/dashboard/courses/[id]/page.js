@@ -1,0 +1,571 @@
+"use client"
+
+import { use, useState } from "react"
+import Link from "next/link"
+import {
+  BookOpen, ClipboardList, Users, Calendar, ChevronRight, ArrowLeft,
+  CheckCircle2, Clock, FileText, Shield, Brain, Eye, GraduationCap,
+  AlertTriangle, Lock, Unlock, BadgeCheck, BarChart2, Layers,
+} from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
+import { Progress } from "@/components/ui/progress"
+import { demoCourses, demoAssignments } from "@/lib/demo-data"
+import { getCourseTemplate } from "@/lib/templates/course-templates"
+import { getStoryTemplate } from "@/lib/templates/story-templates"
+import { getRubricPreset } from "@/lib/templates/rubric-presets"
+import { getReflectionPromptSet } from "@/lib/templates/reflection-prompts"
+import { getGatePresetRules } from "@/lib/verification-gate"
+
+// ─── Category colour map ─────────────────────────────────
+const CATEGORY_COLORS = {
+  NEWSROOM: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400",
+  BROADCAST: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400",
+  PR: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400",
+  MAGAZINE: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400",
+  EDITORIAL: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400",
+}
+
+const CATEGORY_ICONS = {
+  NEWSROOM: "📰",
+  BROADCAST: "📺",
+  PR: "📣",
+  MAGAZINE: "📖",
+  EDITORIAL: "✍️",
+}
+
+function GateRuleBadge({ label, active }) {
+  return (
+    <div className={`flex items-center gap-1.5 text-xs rounded-md px-2 py-1 ${active ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400" : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800"}`}>
+      {active ? <CheckCircle2 className="h-3 w-3" /> : <div className="h-3 w-3 rounded-full border border-zinc-300 dark:border-zinc-600" />}
+      {label}
+    </div>
+  )
+}
+
+function AssignmentCard({ assignment, template, index, onOpen }) {
+  const rc = template?.requiredComponents || {}
+  const gates = template?.verificationDefaults || {}
+
+  return (
+    <div className="rounded-xl border bg-card hover:border-zinc-300 dark:hover:border-zinc-600 transition-all">
+      <div className="flex items-start gap-4 p-4">
+        {/* Number */}
+        <div className="shrink-0 w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-sm font-semibold text-zinc-600 dark:text-zinc-400">
+          {index + 1}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          {/* Header row */}
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div>
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[template?.category] || "bg-zinc-100 text-zinc-600"}`}>
+                  {CATEGORY_ICONS[template?.category]} {template?.category}
+                </span>
+                {template?.wordCountRange && (
+                  <span className="text-xs text-muted-foreground">
+                    {template.wordCountRange.min}–{template.wordCountRange.max} words
+                  </span>
+                )}
+              </div>
+              <h3 className="font-semibold text-sm">{assignment.name}</h3>
+              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{assignment.description}</p>
+            </div>
+            <Button variant="outline" size="sm" className="gap-1 text-xs shrink-0" onClick={() => onOpen(assignment.id)}>
+              View Details <ChevronRight className="h-3 w-3" />
+            </Button>
+          </div>
+
+          {/* Required components */}
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {rc.reportingPlan && <Badge variant="outline" className="text-xs gap-1"><BookOpen className="h-2.5 w-2.5" />Reporting Plan</Badge>}
+            {rc.verificationTable && <Badge variant="outline" className="text-xs gap-1"><CheckCircle2 className="h-2.5 w-2.5" />Verification</Badge>}
+            {rc.ethicsMemo && <Badge variant="outline" className="text-xs gap-1"><Shield className="h-2.5 w-2.5" />Ethics Memo</Badge>}
+            {rc.mediaReflection && <Badge variant="outline" className="text-xs gap-1"><Eye className="h-2.5 w-2.5" />Reflection</Badge>}
+          </div>
+
+          {/* Gate summary */}
+          {gates.minItems > 0 && (
+            <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                ≥{gates.minItems} verified claims
+              </span>
+              {gates.requireTwoSourcesHighRisk && (
+                <span className="flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 text-amber-500" />
+                  2-source rule for high-risk
+                </span>
+              )}
+              {template?.constraints?.sourcesRequired > 0 && (
+                <span className="flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  ≥{template.constraints.sourcesRequired} sources
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Micro-lessons */}
+          {template?.microLessonIds?.length > 0 && (
+            <div className="mt-2 flex items-center gap-1 flex-wrap">
+              <GraduationCap className="h-3 w-3 text-blue-500 shrink-0" />
+              <span className="text-xs text-muted-foreground mr-1">Lesson Coach:</span>
+              {template.microLessonIds.slice(0, 4).map((id) => (
+                <span key={id} className="text-xs bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">
+                  {id.replace(/_/g, " ")}
+                </span>
+              ))}
+              {template.microLessonIds.length > 4 && (
+                <span className="text-xs text-muted-foreground">+{template.microLessonIds.length - 4} more</span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function AssignmentDetailSheet({ templateId, onClose }) {
+  const template = getStoryTemplate(templateId)
+  if (!template) return null
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
+      <div
+        className="h-full w-full max-w-xl bg-background shadow-2xl overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 py-4 border-b">
+          <div>
+            <div className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium mb-1 ${CATEGORY_COLORS[template.category] || ""}`}>
+              {CATEGORY_ICONS[template.category]} {template.category}
+            </div>
+            <h2 className="font-bold text-lg">{template.name}</h2>
+          </div>
+          <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
+        </div>
+
+        <ScrollArea className="flex-1 px-6 py-4">
+          <div className="space-y-6">
+            {/* Description */}
+            <p className="text-sm text-muted-foreground">{template.description}</p>
+
+            {/* Word count & sources */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border p-3 text-center">
+                <div className="text-lg font-bold">{template.wordCountRange.min}–{template.wordCountRange.max}</div>
+                <div className="text-xs text-muted-foreground">words</div>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <div className="text-lg font-bold">{template.constraints?.sourcesRequired ?? 0}</div>
+                <div className="text-xs text-muted-foreground">sources</div>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <div className="text-lg font-bold">{template.verificationDefaults?.minItems ?? 0}</div>
+                <div className="text-xs text-muted-foreground">verified claims</div>
+              </div>
+            </div>
+
+            {/* Required Sections */}
+            <div>
+              <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                <Layers className="h-4 w-4" /> Required Sections
+              </h3>
+              <div className="space-y-1.5">
+                {template.requiredSections.map((s) => (
+                  <div key={s.id} className="flex items-start gap-2 text-sm">
+                    <div className={`mt-0.5 h-4 w-4 rounded-full border-2 shrink-0 ${s.required ? "border-zinc-700 dark:border-zinc-300" : "border-zinc-300 dark:border-zinc-600"}`} />
+                    <span className={s.required ? "font-medium" : "text-muted-foreground"}>{s.label}</span>
+                    {!s.required && <Badge variant="outline" className="text-xs ml-auto shrink-0">optional</Badge>}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Verification Gate */}
+            <div>
+              <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                <Shield className="h-4 w-4" /> Verification Gate
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                <GateRuleBadge label={`≥${template.verificationDefaults.minItems} claims`} active={true} />
+                <GateRuleBadge label={`≥${template.verificationDefaults.minHighConfidence} high-confidence`} active={true} />
+                <GateRuleBadge label="Source links" active={template.verificationDefaults.requireSourceLinks} />
+                <GateRuleBadge label="2-source for high-risk" active={template.verificationDefaults.requireTwoSourcesHighRisk} />
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Micro-Lessons */}
+            {template.microLessonIds?.length > 0 && (
+              <div>
+                <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4 text-blue-500" /> Lesson Coach Cards
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {template.microLessonIds.map((id) => (
+                    <span key={id} className="text-xs bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 px-2 py-1 rounded-md border border-blue-200 dark:border-blue-900">
+                      {id.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Required Components */}
+            <div>
+              <h3 className="font-semibold text-sm mb-2">Required Components</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {template.requiredComponents.reportingPlan && <Badge className="gap-1"><BookOpen className="h-3 w-3" />Reporting Plan</Badge>}
+                {template.requiredComponents.verificationTable && <Badge className="gap-1"><CheckCircle2 className="h-3 w-3" />Verification Table</Badge>}
+                {template.requiredComponents.ethicsMemo && <Badge className="gap-1"><Shield className="h-3 w-3" />Ethics Memo</Badge>}
+                {template.requiredComponents.mediaReflection && <Badge className="gap-1"><Eye className="h-3 w-3" />Reflection</Badge>}
+                <Badge className="gap-1"><Brain className="h-3 w-3" />AI Disclosure</Badge>
+              </div>
+            </div>
+
+            {/* AI Modules */}
+            {template.aiModules && (
+              <div>
+                <h3 className="font-semibold text-sm mb-2">AI Editor Modules</h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {template.aiModules.copyEditor && <Badge variant="outline" className="text-xs">✏️ Copy Editor</Badge>}
+                  {template.aiModules.factChecker && <Badge variant="outline" className="text-xs">🔍 Fact Checker</Badge>}
+                  {template.aiModules.ethicsLaw && <Badge variant="outline" className="text-xs">⚖️ Ethics & Law</Badge>}
+                  {template.aiModules.framingAnalyst && <Badge variant="outline" className="text-xs">🔭 Framing Analyst</Badge>}
+                </div>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <div className="px-6 py-4 border-t">
+          <Button asChild className="w-full gap-2">
+            <Link href={`/dashboard/editor?template=${templateId}`}>
+              <FileText className="h-4 w-4" /> Open in Writing Studio
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────
+
+export default function CourseDetailPage({ params }) {
+  const { id } = use(params)
+  const [activeTab, setActiveTab] = useState("assignments")
+  const [openTemplateId, setOpenTemplateId] = useState(null)
+
+  // Find course — try demo data first, then fall back to template preview
+  const course = demoCourses.find((c) => c.id === id)
+
+  // Derive template from course code or from the ID itself (when created from template)
+  const templateCode = course?.templateId || course?.code?.replace(/\s/g, "") || id.toUpperCase()
+  const template = getCourseTemplate(templateCode)
+
+  // If we have neither — show not found
+  if (!course && !template) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Course Not Found</h2>
+        <p className="text-muted-foreground mb-6">This course doesn&apos;t exist or you don&apos;t have access.</p>
+        <Button asChild variant="outline"><Link href="/dashboard/courses">← Back to Courses</Link></Button>
+      </div>
+    )
+  }
+
+  // Resolve assignment templates from course template
+  const assignmentTemplateIds = template?.assignmentTemplateIds || []
+  const assignmentTemplates = assignmentTemplateIds.map((tid) => getStoryTemplate(tid)).filter(Boolean)
+
+  // Rubric
+  const rubricId = template?.defaultRubricId
+  const rubric = rubricId ? getRubricPreset(rubricId) : null
+
+  // Gate preset
+  const gateRules = template?.gatePreset ? getGatePresetRules(template.gatePreset) : {}
+
+  // Reflection prompts
+  const reflectionSet = template?.reflectionPromptSetId ? getReflectionPromptSet(template.reflectionPromptSetId) : null
+
+  const displayTitle = course?.title || template?.title || "Untitled Course"
+  const displayCode = course?.code || template?.code || ""
+  const displaySemester = course?.semester || "2026"
+  const displayDescription = course?.description || template?.description || ""
+
+  return (
+    <>
+      {openTemplateId && (
+        <AssignmentDetailSheet
+          templateId={openTemplateId}
+          onClose={() => setOpenTemplateId(null)}
+        />
+      )}
+
+      <div className="space-y-6">
+        {/* Back link */}
+        <Button asChild variant="ghost" size="sm" className="gap-2 -ml-2 text-muted-foreground">
+          <Link href="/dashboard/courses"><ArrowLeft className="h-3.5 w-3.5" />All Courses</Link>
+        </Button>
+
+        {/* Course header */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <Badge variant="secondary" className="font-mono">{displayCode}</Badge>
+              <Badge variant="outline">{displaySemester}</Badge>
+              {template?.gatePreset && (
+                <Badge variant="outline" className="gap-1 text-xs">
+                  <Shield className="h-3 w-3" />
+                  Gate: {template.gatePreset}
+                </Badge>
+              )}
+            </div>
+            <h1 className="text-2xl font-bold tracking-tight">{displayTitle}</h1>
+            <p className="text-muted-foreground mt-1 max-w-2xl">{displayDescription}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm" className="gap-2">
+              <Link href="/dashboard/assignments">
+                <ClipboardList className="h-3.5 w-3.5" />Assignments
+              </Link>
+            </Button>
+            <Button asChild size="sm" className="gap-2">
+              <Link href={`/dashboard/editor?course=${id}`}>
+                <FileText className="h-3.5 w-3.5" />Open Studio
+              </Link>
+            </Button>
+          </div>
+        </div>
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[
+            { label: "Assignments", value: assignmentTemplates.length, icon: ClipboardList },
+            { label: "Weeks", value: template?.weeklyPlan?.length || 14, icon: Calendar },
+            { label: "Learning Outcomes", value: template?.outcomes?.length || 0, icon: BadgeCheck },
+            { label: "Rubric Categories", value: rubric?.categories?.length || 0, icon: BarChart2 },
+          ].map(({ label, value, icon: Icon }) => (
+            <Card key={label}>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-zinc-100 dark:bg-zinc-800">
+                    <Icon className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                  </div>
+                  <div>
+                    <div className="text-2xl font-bold">{value}</div>
+                    <div className="text-xs text-muted-foreground">{label}</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList>
+            <TabsTrigger value="assignments">📋 Assignments</TabsTrigger>
+            <TabsTrigger value="weekly">📅 Weekly Plan</TabsTrigger>
+            <TabsTrigger value="outcomes">🎯 Outcomes</TabsTrigger>
+            <TabsTrigger value="rubric">📊 Rubric</TabsTrigger>
+            <TabsTrigger value="gates">🔒 Gates</TabsTrigger>
+          </TabsList>
+
+          {/* ── Assignments Tab ───────────────────────── */}
+          <TabsContent value="assignments" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Assignment Pack</h2>
+                <p className="text-sm text-muted-foreground">
+                  {assignmentTemplates.length} pre-configured assignments auto-generated from the {displayCode} template.
+                </p>
+              </div>
+            </div>
+
+            {assignmentTemplates.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <ClipboardList className="h-8 w-8 mx-auto mb-3 opacity-40" />
+                <p>No assignment templates linked to this course.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {assignmentTemplates.map((t, i) => (
+                  <AssignmentCard
+                    key={t.id}
+                    assignment={t}
+                    template={t}
+                    index={i}
+                    onOpen={setOpenTemplateId}
+                  />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── Weekly Plan Tab ───────────────────────── */}
+          <TabsContent value="weekly" className="space-y-4">
+            <h2 className="text-lg font-semibold">14-Week Plan</h2>
+            {template?.weeklyPlan?.length > 0 ? (
+              <div className="space-y-3">
+                {template.weeklyPlan.map((week) => (
+                  <div key={week.week} className="rounded-xl border p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="shrink-0 w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-600 dark:text-zinc-300">
+                        {week.week}
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-sm">{week.topic}</h3>
+                        <ul className="mt-1.5 space-y-1">
+                          {week.activities.map((a, i) => (
+                            <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
+                              <span className="mt-0.5 text-zinc-300 dark:text-zinc-600">•</span>
+                              {a}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">Weekly plan not available for this course.</p>
+            )}
+          </TabsContent>
+
+          {/* ── Learning Outcomes Tab ─────────────────── */}
+          <TabsContent value="outcomes" className="space-y-4">
+            <h2 className="text-lg font-semibold">Learning Outcomes</h2>
+            {template?.outcomes?.length > 0 ? (
+              <div className="space-y-2">
+                {template.outcomes.map((outcome, i) => (
+                  <div key={i} className="flex items-start gap-3 rounded-lg border p-3">
+                    <div className="shrink-0 w-6 h-6 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <p className="text-sm">{typeof outcome === "string" ? outcome : outcome.label}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">No outcomes defined.</p>
+            )}
+
+            {/* Reflection prompts */}
+            {reflectionSet?.prompts?.length > 0 && (
+              <>
+                <Separator />
+                <h3 className="font-semibold">Reflection Prompts ({reflectionSet.prompts.length})</h3>
+                <div className="space-y-2">
+                  {reflectionSet.prompts.map((prompt) => (
+                    <div key={prompt.id} className="rounded-lg border p-3">
+                      <p className="text-sm font-medium">{prompt.question}</p>
+                      {prompt.hint && (
+                        <p className="text-xs text-muted-foreground mt-1">💡 {prompt.hint}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </TabsContent>
+
+          {/* ── Rubric Tab ────────────────────────────── */}
+          <TabsContent value="rubric" className="space-y-4">
+            <h2 className="text-lg font-semibold">
+              Default Rubric: {rubric?.name || "Not set"}
+            </h2>
+            {rubric ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <BarChart2 className="h-4 w-4" />
+                  Total: {rubric.totalPoints} points across {rubric.categories.length} categories
+                </div>
+                {rubric.categories.map((cat) => (
+                  <div key={cat.key} className="rounded-xl border p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <h3 className="font-semibold text-sm">{cat.label}</h3>
+                        <p className="text-xs text-muted-foreground">{cat.description}</p>
+                      </div>
+                      <Badge variant="outline">{cat.maxPoints} pts</Badge>
+                    </div>
+                    <div className="space-y-1">
+                      {cat.levels?.map((level) => (
+                        <div key={level.score} className="flex items-center gap-2 text-xs">
+                          <span className="w-16 font-medium">{level.label}</span>
+                          <span className="w-8 text-muted-foreground font-mono">{level.score}</span>
+                          <span className="text-muted-foreground">{level.description}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-sm">No rubric assigned to this course.</p>
+            )}
+          </TabsContent>
+
+          {/* ── Gates Tab ─────────────────────────────── */}
+          <TabsContent value="gates" className="space-y-4">
+            <h2 className="text-lg font-semibold">
+              Verification Gate Preset: <code className="text-sm bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded">{template?.gatePreset || "standard"}</code>
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              These rules run server-side when a student clicks "Submit Final". The submission is blocked unless all gates pass.
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                { key: "planRequired", label: "Story plan required" },
+                { key: "requireAllSections", label: "All required sections present" },
+                { key: "requireSourceLinks", label: "Source links required" },
+                { key: "requireNamedSources", label: "Named sources required" },
+                { key: "requireEthicsMitigation", label: "Ethics mitigation required" },
+                { key: "requireRightOfReply", label: "Right of reply documented" },
+                { key: "requireAIDisclosure", label: "AI disclosure required" },
+                { key: "requireReflection", label: "Reflection required" },
+                { key: "requireProofPack", label: "Proof pack required (PR)" },
+                { key: "requireAudiencePanel", label: "Audience panel required (PR)" },
+                { key: "requirePhotoPermissions", label: "Photo permissions required" },
+                { key: "requireSourcePermissions", label: "Source permissions required" },
+                { key: "requireOpinionFactLabels", label: "Opinion/fact labels required" },
+              ].map(({ key, label }) => (
+                <GateRuleBadge key={key} label={label} active={!!gateRules[key]} />
+              ))}
+            </div>
+
+            <div className="rounded-xl border p-4 bg-zinc-50 dark:bg-zinc-900 space-y-2">
+              <h3 className="font-semibold text-sm">Thresholds</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <span className="text-muted-foreground">Min verification rows</span>
+                <span className="font-medium">{gateRules.verificationMinRows ?? 2}</span>
+                <span className="text-muted-foreground">High-risk min sources</span>
+                <span className="font-medium">{gateRules.highRiskMinSources ?? 2}</span>
+                <span className="text-muted-foreground">Min reflection chars</span>
+                <span className="font-medium">{gateRules.reflectionMinLength ?? 100}</span>
+                <span className="text-muted-foreground">Block if low-confidence &gt;</span>
+                <span className="font-medium">{gateRules.blockIfLowConfidenceRatio ? `${(gateRules.blockIfLowConfidenceRatio * 100).toFixed(0)}%` : "not set"}</span>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </>
+  )
+}
