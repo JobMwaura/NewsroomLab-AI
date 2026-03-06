@@ -119,12 +119,16 @@ model Course {
   id          String   @id @default(cuid())
   title       String
   code        String?
+  series      String?  // Course level: 100, 200, 300, 400
   institution String?
   semester    String
   description String?
+  outcomes    Json     @default("[]")  // Learning outcomes array
   timezone    String   @default("Africa/Nairobi")
   lecturerId  String   @map("lecturer_id")
+  templateId  String?  @map("template_id")  // Reference to course template
   isArchived  Boolean  @default(false) @map("is_archived")
+  isPublished Boolean  @default(false) @map("is_published")  // Visible to students
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 

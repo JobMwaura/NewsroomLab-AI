@@ -6,6 +6,10 @@
 // Or:  node prisma/seed.js
 
 import { PrismaClient } from "@prisma/client"
+import { PrismaPg } from "@prisma/adapter-pg"
+import pkg from "pg"
+const { Pool } = pkg
+
 import {
   seedCourseTemplates,
   seedAssignmentTemplates,
@@ -16,7 +20,11 @@ import {
   seedAllCourses,
 } from "../src/lib/seed-from-templates.js"
 
-const prisma = new PrismaClient()
+// Create Prisma client with adapter (required for Prisma 7)
+const connectionString = process.env.DATABASE_URL
+const pool = new Pool({ connectionString })
+const adapter = new PrismaPg(pool)
+const prisma = new PrismaClient({ adapter })
 
 // ─── Helpers ─────────────────────────────────────────────
 
@@ -77,11 +85,25 @@ async function main() {
   const lecturerId = "user_lecturer_001"
   const allSeeds = seedAllCourses({
     lecturerId,
-    semester: "Jan 2026",
+    semester: "Semester 1 2026",
     startDate: new Date("2026-01-12"),
   })
 
+  // Course series mapping
+  const seriesMap = {
+    HCC109: "100",
+    HCC205: "200",
+    HCC312: "300",
+    HCC314: "300",
+    HCC316: "300",
+    HCC420: "400",
+  }
+
   for (const seed of allSeeds) {
+    // Get the template code from the course
+    const templateCode = seed.course.templateId || seed.course.code?.replace(/\s/g, "")
+    const series = seriesMap[templateCode] || "300"
+
     // Create the course
     await prisma.course.upsert({
       where: { id: seed.course.id },
@@ -90,6 +112,10 @@ async function main() {
         code: seed.course.code,
         description: seed.course.description,
         semester: seed.course.semester,
+        series,
+        outcomes: seed.course.outcomes || [],
+        templateId: templateCode,
+        isPublished: true,
       },
       create: {
         id: seed.course.id,
@@ -97,7 +123,11 @@ async function main() {
         title: seed.course.title,
         description: seed.course.description,
         semester: seed.course.semester,
+        series,
+        outcomes: seed.course.outcomes || [],
+        templateId: templateCode,
         isArchived: false,
+        isPublished: true,
         lecturerId,
       },
     })

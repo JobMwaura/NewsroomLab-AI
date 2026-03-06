@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
-import { BookOpen, Users, ClipboardList, ArrowRight, Plus, Archive, GraduationCap, CheckCircle2, ChevronRight, Eye, EyeOff, Pencil, Settings, MoreVertical, Globe, Lock } from "lucide-react"
+import { BookOpen, Users, ClipboardList, ArrowRight, Plus, Archive, GraduationCap, CheckCircle2, ChevronRight, Eye, EyeOff, Pencil, Settings, MoreVertical, Globe, Lock, Loader2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,7 +14,6 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/providers/auth-provider"
-import { demoCourses } from "@/lib/demo-data"
 import { courseTemplates, courseTemplateCodes, getCourseTemplate } from "@/lib/templates"
 import { toast } from "sonner"
 
@@ -24,7 +23,27 @@ export default function CoursesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [step, setStep] = useState(1) // 1 = pick template, 2 = configure
-  const [courses, setCourses] = useState(demoCourses)
+  const [courses, setCourses] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  // Fetch courses from database
+  useEffect(() => {
+    async function fetchCourses() {
+      try {
+        const res = await fetch("/api/courses")
+        if (res.ok) {
+          const data = await res.json()
+          setCourses(data.courses || [])
+        }
+      } catch (error) {
+        console.error("Failed to fetch courses:", error)
+        toast.error("Failed to load courses")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchCourses()
+  }, [])
 
   // Filter based on role
   // Lecturers see all courses, students only see published courses
@@ -44,27 +63,58 @@ export default function CoursesPage() {
     setStep(2)
   }
 
-  const handleTogglePublish = (courseId) => {
-    setCourses(prev => prev.map(c => {
-      if (c.id === courseId) {
-        const newStatus = !c.isPublished
+  const handleTogglePublish = async (courseId) => {
+    const course = courses.find(c => c.id === courseId)
+    if (!course) return
+
+    const newStatus = !course.isPublished
+    
+    try {
+      const res = await fetch(`/api/courses/${courseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isPublished: newStatus }),
+      })
+
+      if (res.ok) {
+        setCourses(prev => prev.map(c => 
+          c.id === courseId ? { ...c, isPublished: newStatus } : c
+        ))
         toast.success(newStatus 
-          ? `"${c.title}" is now visible to students` 
-          : `"${c.title}" is now hidden from students`)
-        return { ...c, isPublished: newStatus }
+          ? `"${course.title}" is now visible to students` 
+          : `"${course.title}" is now hidden from students`)
+      } else {
+        toast.error("Failed to update course")
       }
-      return c
-    }))
+    } catch (error) {
+      console.error("Failed to toggle publish:", error)
+      toast.error("Failed to update course")
+    }
   }
 
-  const handleArchiveCourse = (courseId) => {
-    setCourses(prev => prev.map(c => {
-      if (c.id === courseId) {
-        toast.success(`"${c.title}" has been archived`)
-        return { ...c, isArchived: true, isPublished: false }
+  const handleArchiveCourse = async (courseId) => {
+    const course = courses.find(c => c.id === courseId)
+    if (!course) return
+
+    try {
+      const res = await fetch(`/api/courses/${courseId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isArchived: true, isPublished: false }),
+      })
+
+      if (res.ok) {
+        setCourses(prev => prev.map(c => 
+          c.id === courseId ? { ...c, isArchived: true, isPublished: false } : c
+        ))
+        toast.success(`"${course.title}" has been archived`)
+      } else {
+        toast.error("Failed to archive course")
       }
-      return c
-    }))
+    } catch (error) {
+      console.error("Failed to archive course:", error)
+      toast.error("Failed to archive course")
+    }
   }
 
   const handleCreateCourse = (e) => {
@@ -88,6 +138,18 @@ export default function CoursesPage() {
     setSelectedTemplate(null)
     setStep(1)
     toast.success(`Course "${newCourse.title}" created from template with ${newCourse.assignmentCount} assignments!`)
+  }
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          <p className="text-muted-foreground">Loading courses...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
