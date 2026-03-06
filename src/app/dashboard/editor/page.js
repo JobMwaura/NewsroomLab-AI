@@ -339,6 +339,7 @@ const workflowSteps = [
 function EditorInner() {
   const searchParams = useSearchParams()
   const templateParam = searchParams.get("template")
+  const editParam = searchParams.get("edit") // ID of submission being edited
   const storyTemplate = templateParam ? getStoryTemplate(templateParam) : null
   const demoAssignment = demoAssignments[0]
   
@@ -374,6 +375,8 @@ function EditorInner() {
   const [revisionCompleted, setRevisionCompleted] = useState(false)
   const [lastSaved, setLastSaved] = useState(null)
   const [hasSavedDraft, setHasSavedDraft] = useState(false)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editingSubmissionId, setEditingSubmissionId] = useState(null)
   const [verificationItems, setVerificationItems] = useState([
     { id: "1", claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM", riskLevel: "LOW" }
   ])
@@ -392,6 +395,40 @@ function EditorInner() {
       }
     }
   }, [templateParam])
+  
+  // Load submission for editing if edit param is present
+  useEffect(() => {
+    if (editParam) {
+      const editData = localStorage.getItem("newsroomlab_edit_submission")
+      if (editData) {
+        try {
+          const submission = JSON.parse(editData)
+          if (submission.id === editParam) {
+            // Load all the submission data into the editor
+            setIsEditMode(true)
+            setEditingSubmissionId(submission.id)
+            setHeadline(submission.headline || submission.title || "")
+            setDraftContent(submission.draftContent || "")
+            setRevisedContent(submission.draftContent || "") // Start revision with current content
+            setVerificationItems(submission.verificationTable || [{ id: "1", claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM", riskLevel: "LOW" }])
+            setReflectionAnswers(submission.reflectionAnswers || {})
+            setAiDisclosure(submission.aiDisclosure || { tools: "", usage: "" })
+            // Mark previous steps as completed since they were already done
+            setPlanCompleted(true)
+            setAiReviewRequested(true)
+            setRevisionCompleted(false) // Require revision to be done again
+            setActiveTab("revision") // Start at revision tab
+            toast.success("Loaded your submission for editing. Make your corrections and re-submit.")
+            // Clear the edit data from localStorage
+            localStorage.removeItem("newsroomlab_edit_submission")
+          }
+        } catch (e) {
+          console.error("Failed to load submission for editing:", e)
+          toast.error("Failed to load submission")
+        }
+      }
+    }
+  }, [editParam])
   
   // Auto-save every 30 seconds
   useEffect(() => {
@@ -524,6 +561,24 @@ function EditorInner() {
                 Load Draft
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Edit Mode Banner */}
+      {isEditMode && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900">
+                <RotateCcw className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <p className="font-medium text-sm text-blue-900 dark:text-blue-100">Editing Previous Submission</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">Make your corrections in the Revision tab and re-submit</p>
+              </div>
+            </div>
+            <Badge variant="secondary" className="text-xs">One-time edit</Badge>
           </div>
         </div>
       )}
@@ -1372,9 +1427,9 @@ function EditorInner() {
                       className="w-full gap-2" 
                       disabled={!allPassed} 
                       onClick={() => {
-                        // Save submission to localStorage for portfolio
+                        // Create or update submission
                         const submission = {
-                          id: `submission_${Date.now()}`,
+                          id: isEditMode && editingSubmissionId ? editingSubmissionId : `submission_${Date.now()}`,
                           title: headline || assignment.title,
                           storyType: assignment.storyType || "HARD_NEWS",
                           course: assignment.courseCode || "HCC 314",
@@ -1390,17 +1445,31 @@ function EditorInner() {
                           selected: false,
                           assignmentId: assignment.id,
                           templateId: templateParam,
+                          editedAt: isEditMode ? new Date().toISOString() : undefined,
+                          editCount: isEditMode ? 1 : 0,
                         }
                         
                         // Get existing submissions
                         const existingSubmissions = JSON.parse(localStorage.getItem("newsroomlab_portfolio") || "[]")
                         
-                        // Check if already submitted this assignment
-                        const existingIndex = existingSubmissions.findIndex(s => s.assignmentId === assignment.id)
-                        if (existingIndex >= 0) {
-                          existingSubmissions[existingIndex] = submission
+                        // Check if editing an existing submission or submitting new
+                        if (isEditMode && editingSubmissionId) {
+                          const existingIndex = existingSubmissions.findIndex(s => s.id === editingSubmissionId)
+                          if (existingIndex >= 0) {
+                            // Preserve the edit count and increment
+                            submission.editCount = (existingSubmissions[existingIndex].editCount || 0) + 1
+                            existingSubmissions[existingIndex] = submission
+                          } else {
+                            existingSubmissions.push(submission)
+                          }
                         } else {
-                          existingSubmissions.push(submission)
+                          // Check if already submitted this assignment (not in edit mode)
+                          const existingIndex = existingSubmissions.findIndex(s => s.assignmentId === assignment.id)
+                          if (existingIndex >= 0) {
+                            existingSubmissions[existingIndex] = submission
+                          } else {
+                            existingSubmissions.push(submission)
+                          }
                         }
                         
                         localStorage.setItem("newsroomlab_portfolio", JSON.stringify(existingSubmissions))
@@ -1409,11 +1478,19 @@ function EditorInner() {
                         const savedKey = `${STORAGE_KEY}_${templateParam || "default"}`
                         localStorage.removeItem(savedKey)
                         
-                        toast.success("🎉 Submission received! Your work is now in your portfolio and sent to your lecturer.")
+                        if (isEditMode) {
+                          toast.success("✅ Submission updated! Your corrections have been saved.")
+                        } else {
+                          toast.success("🎉 Submission received! Your work is now in your portfolio and sent to your lecturer.")
+                        }
                       }}
                     >
                       {allPassed ? (
-                        <><Shield className="h-4 w-4" />Submit Final Version</>
+                        isEditMode ? (
+                          <><RotateCcw className="h-4 w-4" />Update Submission</>
+                        ) : (
+                          <><Shield className="h-4 w-4" />Submit Final Version</>
+                        )
                       ) : (
                         <><Lock className="h-4 w-4" />Submit (Locked - {gates.length - passedCount} gates remaining)</>
                       )}

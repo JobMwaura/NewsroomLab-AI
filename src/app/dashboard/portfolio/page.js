@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import {
   Briefcase,
   FileText,
@@ -10,6 +11,8 @@ import {
   Eye,
   Trash2,
   ExternalLink,
+  Pencil,
+  RotateCcw,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -141,6 +144,25 @@ export default function PortfolioPage() {
     const newPieces = pieces.filter(p => p.id !== id)
     updatePiecesAndSave(newPieces)
     toast.success("Piece removed from portfolio")
+  }
+  
+  const router = useRouter()
+  
+  const editPiece = (piece) => {
+    if (piece.isDemo) {
+      toast.error("Cannot edit demo piece")
+      return
+    }
+    if (piece.score) {
+      toast.error("Cannot edit graded submissions")
+      return
+    }
+    // Store the piece data for editing in the editor
+    localStorage.setItem("newsroomlab_edit_submission", JSON.stringify(piece))
+    // Navigate to editor with edit mode
+    const templateId = piece.templateId || "default"
+    router.push(`/dashboard/editor?template=${templateId}&edit=${piece.id}`)
+    toast.success("Opening submission for editing...")
   }
 
   const realPieces = pieces.filter(p => !p.isDemo)
@@ -285,6 +307,12 @@ export default function PortfolioPage() {
                           <span className="text-xs text-muted-foreground">
                             {piece.course} — {piece.date}
                           </span>
+                          {piece.editCount > 0 && (
+                            <Badge variant="outline" className="text-xs text-blue-600 border-blue-200">
+                              <RotateCcw className="h-3 w-3 mr-1" />
+                              Edited
+                            </Badge>
+                          )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -294,13 +322,25 @@ export default function PortfolioPage() {
                             <span className="font-bold">{piece.score}%</span>
                           </div>
                         ) : (
-                          <Badge variant="outline" className="text-xs">Awaiting Grade</Badge>
+                          <>
+                            <Badge variant="outline" className="text-xs">Awaiting Grade</Badge>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-muted-foreground hover:text-blue-600"
+                              onClick={() => editPiece(piece)}
+                              title="Edit submission"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          </>
                         )}
                         <Button 
                           variant="ghost" 
                           size="icon" 
                           className="h-8 w-8 text-muted-foreground hover:text-red-600"
                           onClick={() => deletePiece(piece.id)}
+                          title="Remove from portfolio"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
