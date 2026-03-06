@@ -108,12 +108,15 @@ export default function CoursesPage() {
                                 <h3 className="font-semibold text-sm">{t.title}</h3>
                                 <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{t.description}</p>
                                 <div className="flex flex-wrap gap-1 mt-2">
-                                  {t.outcomes.slice(0, 3).map((o, i) => (
-                                    <span key={i} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                                      <CheckCircle2 className="h-3 w-3 text-green-500" />
-                                      {o.label.length > 40 ? o.label.slice(0, 40) + "…" : o.label}
-                                    </span>
-                                  ))}
+                                  {t.outcomes.slice(0, 3).map((o, i) => {
+                                    const text = typeof o === "string" ? o : o.label
+                                    return (
+                                      <span key={i} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                        <CheckCircle2 className="h-3 w-3 text-green-500" />
+                                        {text.length > 40 ? text.slice(0, 40) + "…" : text}
+                                      </span>
+                                    )
+                                  })}
                                   {t.outcomes.length > 3 && (
                                     <span className="text-xs text-muted-foreground">+{t.outcomes.length - 3} more</span>
                                   )}
@@ -167,12 +170,15 @@ export default function CoursesPage() {
                     <div className="space-y-2">
                       <h4 className="text-sm font-semibold">Learning Outcomes (from template)</h4>
                       <div className="space-y-1">
-                        {selectedTemplate.outcomes.map((o) => (
-                          <div key={o.id} className="flex items-start gap-2 text-xs text-muted-foreground">
-                            <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 shrink-0" />
-                            <span>{o.label}</span>
-                          </div>
-                        ))}
+                        {selectedTemplate.outcomes.map((o, i) => {
+                          const text = typeof o === "string" ? o : o.label
+                          return (
+                            <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-500 mt-0.5 shrink-0" />
+                              <span>{text}</span>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
 
