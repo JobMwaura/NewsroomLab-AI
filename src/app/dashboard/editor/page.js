@@ -25,36 +25,41 @@ import { getStoryTemplate } from "@/lib/templates/story-templates"
 // Storage key for auto-save
 const STORAGE_KEY = "newsroomlab_editor_draft"
 
-// Enhanced copy editor review with inline issues
+// Accurate copy editor review with real issue detection
 function generateCopyEditorReview(text) {
   if (!text || text.length < 50) {
-    return { issues: [], overallScore: 0, overallNotes: "Not enough text to review." }
+    return { issues: [], overallScore: 100, overallNotes: "Not enough text to review." }
   }
   
   const issues = []
   const sentences = text.split(/[.!?]+/).filter(s => s.trim())
+  const addedPositions = new Set() // Prevent duplicate issues at same position
   
-  // Check for passive voice
-  const passivePatterns = [/was \w+ed/gi, /were \w+ed/gi, /is being/gi, /has been/gi, /had been/gi, /will be \w+ed/gi]
-  passivePatterns.forEach(pattern => {
-    const matches = text.match(pattern)
-    if (matches) {
-      matches.forEach(match => {
-        const index = text.toLowerCase().indexOf(match.toLowerCase())
-        issues.push({
-          type: "passive_voice",
-          severity: "warning",
-          text: match,
-          position: index,
-          message: "Passive voice detected. Consider using active voice for stronger, clearer writing.",
-          suggestion: "Rewrite in active voice: [Subject] [verb] [object]",
-          color: "bg-yellow-200 dark:bg-yellow-900/50"
-        })
-      })
+  // Helper to add issue only if position is unique
+  const addIssue = (issue) => {
+    const key = `${issue.type}-${issue.position}-${issue.text}`
+    if (!addedPositions.has(key)) {
+      addedPositions.add(key)
+      issues.push(issue)
     }
-  })
+  }
   
-  // Check for wordy phrases
+  // 1. Check for passive voice (accurate regex)
+  const passiveRegex = /\b(was|were|is|are|been|being|be)\s+(\w+ed|written|taken|given|made|done|shown|known|seen|found)\b/gi
+  let match
+  while ((match = passiveRegex.exec(text)) !== null) {
+    addIssue({
+      type: "passive_voice",
+      severity: "warning",
+      text: match[0],
+      position: match.index,
+      message: `Passive voice: "${match[0]}". Active voice is usually clearer.`,
+      suggestion: "Rewrite: [Who] [did what] [to whom]",
+      color: "bg-yellow-200 dark:bg-yellow-900/50"
+    })
+  }
+  
+  // 2. Check for wordy phrases (only exact matches)
   const wordyPhrases = {
     "in order to": "to",
     "due to the fact that": "because",
@@ -66,141 +71,209 @@ function generateCopyEditorReview(text) {
     "the majority of": "most",
     "in close proximity to": "near",
     "at the present time": "now",
-    "it is important to note that": "[delete]",
-    "it should be noted that": "[delete]",
-    "there is": "[rewrite sentence]",
-    "there are": "[rewrite sentence]",
   }
   
   Object.entries(wordyPhrases).forEach(([phrase, fix]) => {
-    const regex = new RegExp(phrase, "gi")
-    const matches = text.match(regex)
-    if (matches) {
-      matches.forEach(match => {
-        const index = text.toLowerCase().indexOf(phrase.toLowerCase())
-        issues.push({
-          type: "wordy",
-          severity: "suggestion",
-          text: match,
-          position: index,
-          message: `Wordy phrase: "${match}"`,
-          suggestion: `Replace with: "${fix}"`,
-          color: "bg-blue-200 dark:bg-blue-900/50"
-        })
+    const regex = new RegExp(`\\b${phrase}\\b`, "gi")
+    let m
+    while ((m = regex.exec(text)) !== null) {
+      addIssue({
+        type: "wordy",
+        severity: "suggestion",
+        text: m[0],
+        position: m.index,
+        message: `Wordy: "${m[0]}" can be simpler.`,
+        suggestion: `Replace with: "${fix}"`,
+        color: "bg-blue-200 dark:bg-blue-900/50"
       })
     }
   })
   
-  // Check for clichés
-  const cliches = ["at the end of the day", "think outside the box", "game changer", "moving forward", "paradigm shift", "synergy", "leverage", "stakeholders", "circle back", "touch base", "low-hanging fruit"]
+  // 3. Check for clichés (exact phrase matches only)
+  const cliches = [
+    "at the end of the day", "think outside the box", "game changer", 
+    "moving forward", "paradigm shift", "low-hanging fruit", 
+    "circle back", "touch base", "best practices"
+  ]
   cliches.forEach(cliche => {
-    if (text.toLowerCase().includes(cliche)) {
-      const index = text.toLowerCase().indexOf(cliche)
-      issues.push({
+    const regex = new RegExp(`\\b${cliche}\\b`, "gi")
+    let m
+    while ((m = regex.exec(text)) !== null) {
+      addIssue({
         type: "cliche",
         severity: "warning",
-        text: cliche,
-        position: index,
-        message: `Cliché detected: "${cliche}"`,
-        suggestion: "Replace with more specific, original language.",
+        text: m[0],
+        position: m.index,
+        message: `Cliché: "${m[0]}"`,
+        suggestion: "Use more specific, original language.",
         color: "bg-orange-200 dark:bg-orange-900/50"
       })
     }
   })
   
-  // Check for long sentences (>35 words)
-  sentences.forEach((sentence, idx) => {
-    const words = sentence.trim().split(/\s+/)
-    if (words.length > 35) {
-      const index = text.indexOf(sentence.trim())
-      issues.push({
+  // 4. Check for long sentences (>30 words is genuinely long)
+  let sentenceStart = 0
+  sentences.forEach((sentence) => {
+    const trimmed = sentence.trim()
+    if (!trimmed) return
+    const wordCount = trimmed.split(/\s+/).length
+    const position = text.indexOf(trimmed, sentenceStart)
+    sentenceStart = position + trimmed.length
+    
+    if (wordCount > 30) {
+      addIssue({
         type: "long_sentence",
-        severity: "error",
-        text: sentence.trim().slice(0, 50) + "...",
-        position: index,
-        message: `Sentence too long (${words.length} words). Aim for 20-25 words max.`,
-        suggestion: "Break into shorter sentences for clarity.",
+        severity: "warning",
+        text: trimmed.slice(0, 40) + "...",
+        position: position,
+        message: `Long sentence: ${wordCount} words. Consider breaking up.`,
+        suggestion: "Aim for 15-25 words per sentence for readability.",
         color: "bg-red-200 dark:bg-red-900/50"
       })
     }
   })
   
-  // Check for repeated words
-  const words = text.toLowerCase().match(/\b\w{4,}\b/g) || []
+  // 5. Check for repeated words (ACCURATE counting - only flag if truly excessive)
+  const words = text.toLowerCase().match(/\b[a-z]{5,}\b/g) || [] // Only words 5+ chars
   const wordCounts = {}
-  words.forEach(word => { wordCounts[word] = (wordCounts[word] || 0) + 1 })
+  const commonWords = new Set([
+    "about", "after", "again", "being", "could", "every", "first", "found", 
+    "great", "house", "large", "little", "might", "never", "other", "people", 
+    "place", "right", "should", "small", "still", "their", "there", "these", 
+    "think", "those", "through", "under", "water", "where", "which", "while", 
+    "would", "write", "years", "before", "between", "because", "through"
+  ])
+  
+  words.forEach(word => {
+    if (!commonWords.has(word)) {
+      wordCounts[word] = (wordCounts[word] || 0) + 1
+    }
+  })
+  
+  // Only flag words repeated 4+ times (not common words)
   Object.entries(wordCounts).forEach(([word, count]) => {
-    if (count > 3 && !["that", "this", "with", "from", "have", "been", "were", "said", "will", "would", "their", "they", "there", "about"].includes(word)) {
-      issues.push({
+    if (count >= 4) {
+      // Find all positions for context
+      const positions = []
+      let idx = 0
+      const lowerText = text.toLowerCase()
+      while ((idx = lowerText.indexOf(word, idx)) !== -1) {
+        positions.push(idx)
+        idx += word.length
+      }
+      
+      addIssue({
         type: "repetition",
         severity: "suggestion",
         text: word,
-        position: text.toLowerCase().indexOf(word),
-        message: `Word "${word}" repeated ${count} times.`,
-        suggestion: "Use synonyms or restructure to avoid repetition.",
+        position: positions[0],
+        message: `"${word}" appears ${count} times. Consider using synonyms.`,
+        suggestion: `Found at positions: ${positions.slice(0, 3).map(p => `...${text.slice(Math.max(0,p-5), p+word.length+5)}...`).join(", ")}`,
         color: "bg-purple-200 dark:bg-purple-900/50"
       })
     }
   })
   
-  // Check for missing attribution
-  const quotePattern = /"[^"]+"/g
-  const quotes = text.match(quotePattern) || []
-  quotes.forEach(quote => {
-    const index = text.indexOf(quote)
-    const after = text.slice(index + quote.length, index + quote.length + 50)
-    if (!after.match(/said|says|according to|stated|noted|explained|added|wrote|reported/i)) {
-      issues.push({
+  // 6. Check for quotes without attribution (within 100 chars after quote)
+  const quoteRegex = /"([^"]{10,})"/g
+  while ((match = quoteRegex.exec(text)) !== null) {
+    const afterQuote = text.slice(match.index + match[0].length, match.index + match[0].length + 100)
+    const beforeQuote = text.slice(Math.max(0, match.index - 50), match.index)
+    const hasAttribution = /\b(said|says|according to|stated|noted|explained|added|wrote|reported|told|asked)\b/i.test(afterQuote) ||
+                          /\b(said|says|according to|stated|noted|explained|added|wrote|reported|told|asked)\b/i.test(beforeQuote)
+    
+    if (!hasAttribution) {
+      addIssue({
         type: "attribution",
         severity: "error",
-        text: quote.slice(0, 30) + (quote.length > 30 ? "..." : ""),
-        position: index,
-        message: "Quote may be missing attribution.",
-        suggestion: "Add attribution: who said this?",
+        text: match[0].slice(0, 30) + (match[0].length > 30 ? "..." : ""),
+        position: match.index,
+        message: "Quote may need attribution. Who said this?",
+        suggestion: "Add 'said [Name]' or 'according to [Source]'",
         color: "bg-red-200 dark:bg-red-900/50"
       })
     }
-  })
+  }
   
-  // Check for AP style issues
-  const apIssues = [
-    { pattern: /\b(\d),(\d{3})\b/g, message: "AP Style: Use numerals for numbers above 10", fix: "Check AP style for numbers" },
-    { pattern: /\bpercent\b/gi, message: "AP Style: Use % symbol with numerals", fix: "e.g., '50%' not '50 percent'" },
-    { pattern: /\b(January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2},/gi, message: "AP Style: Abbreviate months with dates", fix: "e.g., 'Jan. 5' not 'January 5'" },
-  ]
+  // 7. AP Style: Full month names with dates
+  const monthRegex = /\b(January|February|September|October|November|December)\s+\d{1,2}\b/gi
+  while ((match = monthRegex.exec(text)) !== null) {
+    addIssue({
+      type: "ap_style",
+      severity: "suggestion",
+      text: match[0],
+      position: match.index,
+      message: `AP Style: Abbreviate "${match[0].split(" ")[0]}"`,
+      suggestion: "Use: Jan., Feb., Sept., Oct., Nov., Dec. (March-July spelled out)",
+      color: "bg-cyan-200 dark:bg-cyan-900/50"
+    })
+  }
   
-  apIssues.forEach(({ pattern, message, fix }) => {
-    const matches = text.match(pattern)
-    if (matches) {
-      matches.slice(0, 2).forEach(match => {
-        issues.push({
-          type: "ap_style",
-          severity: "suggestion",
-          text: match,
-          position: text.indexOf(match),
-          message,
-          suggestion: fix,
-          color: "bg-cyan-200 dark:bg-cyan-900/50"
-        })
-      })
-    }
-  })
+  // 8. Check for "very" + adjective (weak construction)
+  const veryRegex = /\bvery\s+\w+/gi
+  while ((match = veryRegex.exec(text)) !== null) {
+    addIssue({
+      type: "weak_modifier",
+      severity: "suggestion",
+      text: match[0],
+      position: match.index,
+      message: `"${match[0]}" is weak. Use a stronger word.`,
+      suggestion: "e.g., 'very big' → 'enormous', 'very small' → 'tiny'",
+      color: "bg-blue-200 dark:bg-blue-900/50"
+    })
+  }
   
-  // Calculate score
+  // Calculate score based on issue severity
   const errorCount = issues.filter(i => i.severity === "error").length
   const warningCount = issues.filter(i => i.severity === "warning").length
   const suggestionCount = issues.filter(i => i.severity === "suggestion").length
-  const score = Math.max(0, 100 - (errorCount * 15) - (warningCount * 8) - (suggestionCount * 3))
+  const score = Math.max(0, Math.min(100, 100 - (errorCount * 12) - (warningCount * 5) - (suggestionCount * 2)))
+  
+  // Sort by position in text for better UX
+  const sortedIssues = issues.sort((a, b) => a.position - b.position)
   
   return {
-    issues: issues.sort((a, b) => b.severity === "error" ? 1 : -1),
+    issues: sortedIssues,
     overallScore: score,
-    overallNotes: score >= 80 
-      ? "Good work! Minor improvements suggested." 
-      : score >= 60 
-        ? "Several issues need attention before submission."
-        : "Significant revision needed. Address the highlighted issues."
+    overallNotes: issues.length === 0 
+      ? "Excellent! No issues detected."
+      : score >= 85 
+        ? `Good work! ${issues.length} minor suggestions.`
+        : score >= 70 
+          ? `${issues.length} issues found. Review the feedback below.`
+          : `${issues.length} issues need attention before submission.`
   }
+}
+
+// Helper to highlight text with issues for display
+function highlightTextWithIssues(text, issues) {
+  if (!text || !issues || issues.length === 0) return [{ text, issue: null }]
+  
+  const segments = []
+  let lastEnd = 0
+  
+  // Sort issues by position
+  const sortedIssues = [...issues].sort((a, b) => a.position - b.position)
+  
+  sortedIssues.forEach(issue => {
+    // Add text before this issue
+    if (issue.position > lastEnd) {
+      segments.push({ text: text.slice(lastEnd, issue.position), issue: null })
+    }
+    // Add the highlighted issue text
+    const issueEndPos = issue.position + issue.text.length
+    if (issue.position >= lastEnd) {
+      segments.push({ text: text.slice(issue.position, issueEndPos), issue })
+      lastEnd = issueEndPos
+    }
+  })
+  
+  // Add remaining text
+  if (lastEnd < text.length) {
+    segments.push({ text: text.slice(lastEnd), issue: null })
+  }
+  
+  return segments
 }
 
 function LessonCoachPanel({ lessonIds, onClose }) {
@@ -867,110 +940,79 @@ function EditorInner() {
                 </TabsList>
                 
                 <TabsContent value="copy">
-                  <Card>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
+                  <Card className="overflow-hidden">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
                         <div>
                           <CardTitle className="text-base">Copy Editor</CardTitle>
-                          <CardDescription>{aiReviewData?.copyEditor?.overallNotes || "Analyzing..."}</CardDescription>
+                          <CardDescription className="text-sm">{aiReviewData?.copyEditor?.overallNotes || "Click 'Request AI Review' above to analyze your draft."}</CardDescription>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground">Score:</span>
-                          <Badge 
-                            variant={aiReviewData?.copyEditor?.overallScore >= 80 ? "default" : aiReviewData?.copyEditor?.overallScore >= 60 ? "secondary" : "destructive"}
-                            className="text-base px-3"
-                          >
-                            {aiReviewData?.copyEditor?.overallScore || 0}/100
-                          </Badge>
-                        </div>
+                        <Badge 
+                          variant={aiReviewData?.copyEditor?.overallScore >= 80 ? "default" : aiReviewData?.copyEditor?.overallScore >= 60 ? "secondary" : "destructive"}
+                          className="text-lg px-3"
+                        >
+                          {aiReviewData?.copyEditor?.overallScore ?? "--"}/100
+                        </Badge>
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                      {/* Highlighted Draft Preview */}
-                      <div className="space-y-2">
-                        <Label className="text-sm font-medium">Your Draft with Highlighted Issues</Label>
-                        <div className="rounded-lg border bg-white dark:bg-zinc-900 p-4 text-sm font-mono leading-relaxed max-h-64 overflow-y-auto">
-                          {draftContent.split(/(\s+)/).map((word, idx) => {
-                            const issue = aiReviewData?.copyEditor?.issues?.find(i => 
-                              word.toLowerCase().includes(i.text.toLowerCase().split(" ")[0])
-                            )
-                            if (issue) {
-                              return (
-                                <span 
-                                  key={idx} 
-                                  className={`${issue.color} px-0.5 rounded cursor-help`}
-                                  title={`${issue.message}\n→ ${issue.suggestion}`}
-                                >
-                                  {word}
-                                </span>
-                              )
-                            }
-                            return <span key={idx}>{word}</span>
-                          })}
+                    <CardContent className="space-y-4 max-h-[500px] overflow-y-auto">
+                      {/* Issue Summary */}
+                      {aiReviewData?.copyEditor?.issues && aiReviewData.copyEditor.issues.length > 0 && (
+                        <div className="flex gap-2 flex-wrap p-2 bg-zinc-50 dark:bg-zinc-900 rounded-lg">
+                          <Badge variant="destructive">{aiReviewData.copyEditor.issues.filter(i => i.severity === "error").length} errors</Badge>
+                          <Badge variant="secondary">{aiReviewData.copyEditor.issues.filter(i => i.severity === "warning").length} warnings</Badge>
+                          <Badge variant="outline">{aiReviewData.copyEditor.issues.filter(i => i.severity === "suggestion").length} suggestions</Badge>
                         </div>
-                        <div className="flex flex-wrap gap-2 text-xs">
+                      )}
+                      
+                      {/* Issue List - Compact */}
+                      <div className="space-y-2">
+                        {aiReviewData?.copyEditor?.issues?.map((issue, idx) => (
+                          <div 
+                            key={idx} 
+                            className={`rounded-lg border p-3 ${
+                              issue.severity === "error" ? "border-red-200 bg-red-50 dark:bg-red-950/30" :
+                              issue.severity === "warning" ? "border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30" :
+                              "border-zinc-200 bg-zinc-50 dark:bg-zinc-900"
+                            }`}
+                          >
+                            <div className="flex items-start gap-2 flex-wrap">
+                              <Badge 
+                                variant={issue.severity === "error" ? "destructive" : issue.severity === "warning" ? "secondary" : "outline"}
+                                className="text-xs shrink-0"
+                              >
+                                {issue.type.replace(/_/g, " ")}
+                              </Badge>
+                              <code className={`px-1.5 py-0.5 rounded text-xs ${issue.color} break-all`}>
+                                {issue.text}
+                              </code>
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">{issue.message}</p>
+                            <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                              <strong>→</strong> {issue.suggestion}
+                            </p>
+                          </div>
+                        ))}
+                        {(!aiReviewData?.copyEditor?.issues || aiReviewData.copyEditor.issues.length === 0) && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                            <p className="font-medium">No issues found!</p>
+                            <p className="text-sm">Your copy looks clean.</p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Legend */}
+                      {aiReviewData?.copyEditor?.issues?.length > 0 && (
+                        <div className="flex flex-wrap gap-3 text-xs pt-2 border-t">
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-200"></span> Error</span>
-                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-200"></span> Warning</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-yellow-200"></span> Passive/Warning</span>
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-blue-200"></span> Wordy</span>
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-200"></span> Cliché</span>
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-purple-200"></span> Repetition</span>
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-cyan-200"></span> AP Style</span>
                         </div>
-                      </div>
-                      
-                      <Separator />
-                      
-                      {/* Issue List */}
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-sm font-medium">Issues Found ({aiReviewData?.copyEditor?.issues?.length || 0})</Label>
-                          <div className="flex gap-2 text-xs">
-                            <Badge variant="destructive">{aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "error").length || 0} errors</Badge>
-                            <Badge variant="secondary">{aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "warning").length || 0} warnings</Badge>
-                            <Badge variant="outline">{aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "suggestion").length || 0} suggestions</Badge>
-                          </div>
-                        </div>
-                        <ScrollArea className="max-h-80">
-                          <div className="space-y-2">
-                            {aiReviewData?.copyEditor?.issues?.map((issue, idx) => (
-                              <div 
-                                key={idx} 
-                                className={`rounded-lg border p-3 ${
-                                  issue.severity === "error" ? "border-red-200 bg-red-50 dark:bg-red-950/30" :
-                                  issue.severity === "warning" ? "border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30" :
-                                  "border-zinc-200 bg-zinc-50 dark:bg-zinc-900"
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <Badge 
-                                        variant={issue.severity === "error" ? "destructive" : issue.severity === "warning" ? "secondary" : "outline"}
-                                        className="text-xs"
-                                      >
-                                        {issue.type.replace(/_/g, " ")}
-                                      </Badge>
-                                      <span className={`px-1.5 py-0.5 rounded text-xs font-mono ${issue.color}`}>
-                                        {issue.text}
-                                      </span>
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">{issue.message}</p>
-                                    <p className="text-sm text-green-700 dark:text-green-400 mt-1">
-                                      <strong>Fix:</strong> {issue.suggestion}
-                                    </p>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                            {(!aiReviewData?.copyEditor?.issues || aiReviewData.copyEditor.issues.length === 0) && (
-                              <div className="text-center py-8 text-muted-foreground">
-                                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-600" />
-                                <p>No issues found! Your copy looks clean.</p>
-                              </div>
-                            )}
-                          </div>
-                        </ScrollArea>
-                      </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -1034,82 +1076,188 @@ function EditorInner() {
           )}
         </TabsContent>
 
-        <TabsContent value="revision" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5" />
-                    Draft v2 - Revision
+        <TabsContent value="revision" className="space-y-4">
+          {/* Side-by-side layout: AI Feedback + Revision Editor */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            
+            {/* LEFT: AI Feedback Panel (collapsible on mobile) */}
+            <Card className="lg:sticky lg:top-4 lg:max-h-[calc(100vh-120px)] overflow-hidden">
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Brain className="h-4 w-4" />
+                    AI Feedback
                   </CardTitle>
-                  <CardDescription>Address AI feedback and improve your draft.</CardDescription>
+                  {aiReviewData?.copyEditor && (
+                    <Badge 
+                      variant={aiReviewData.copyEditor.overallScore >= 80 ? "default" : aiReviewData.copyEditor.overallScore >= 60 ? "secondary" : "destructive"}
+                    >
+                      {aiReviewData.copyEditor.overallScore}/100
+                    </Badge>
+                  )}
                 </div>
-                <div className="text-right text-sm">
-                  <span className={"font-mono font-medium " + (revisedContent.length > draftContent.length ? "text-green-600" : "text-muted-foreground")}>
-                    {revisedContent.split(/\s+/).filter(w => w.length > 0).length}
-                  </span>
-                  <span className="text-muted-foreground"> words</span>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-[500px] lg:h-[calc(100vh-200px)]">
+                  <div className="p-4 space-y-3">
+                    {!aiReviewRequested ? (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                        <AlertTriangle className="inline h-4 w-4 mr-2" />
+                        Complete AI Review first to see feedback here.
+                      </div>
+                    ) : aiReviewData?.copyEditor?.issues?.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-600" />
+                        <p className="font-medium">No issues found!</p>
+                        <p className="text-sm">Your copy looks clean.</p>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Quick Stats */}
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge variant="destructive" className="text-xs">
+                            {aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "error").length || 0} errors
+                          </Badge>
+                          <Badge variant="secondary" className="text-xs">
+                            {aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "warning").length || 0} warnings
+                          </Badge>
+                          <Badge variant="outline" className="text-xs">
+                            {aiReviewData?.copyEditor?.issues?.filter(i => i.severity === "suggestion").length || 0} tips
+                          </Badge>
+                        </div>
+                        
+                        {/* Issue List */}
+                        <div className="space-y-2">
+                          {aiReviewData?.copyEditor?.issues?.map((issue, idx) => (
+                            <div 
+                              key={idx} 
+                              className={`rounded-lg border p-2.5 text-sm ${
+                                issue.severity === "error" ? "border-red-200 bg-red-50 dark:bg-red-950/30" :
+                                issue.severity === "warning" ? "border-yellow-200 bg-yellow-50 dark:bg-yellow-950/30" :
+                                "border-zinc-200 bg-zinc-50 dark:bg-zinc-900"
+                              }`}
+                            >
+                              <div className="flex items-start gap-2">
+                                <span className={`shrink-0 px-1.5 py-0.5 rounded text-xs font-mono ${issue.color}`}>
+                                  {issue.text.slice(0, 25)}{issue.text.length > 25 ? "..." : ""}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">{issue.message}</p>
+                              <p className="text-xs text-green-700 dark:text-green-400 mt-1">
+                                → {issue.suggestion}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        {/* Color Legend */}
+                        <div className="pt-2 border-t">
+                          <p className="text-xs text-muted-foreground mb-2">Legend:</p>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-red-200"></span> Error</span>
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-yellow-200"></span> Warning</span>
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-blue-200"></span> Wordy</span>
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded bg-purple-200"></span> Repetition</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+            
+            {/* RIGHT: Revision Editor */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4" />
+                      Revised Draft
+                    </CardTitle>
+                    <CardDescription className="text-xs">Fix issues from the AI feedback panel</CardDescription>
+                  </div>
+                  <div className="text-right text-sm">
+                    <span className={"font-mono font-medium " + (revisedContent.split(/\s+/).filter(w => w.length > 0).length >= (assignment.constraints.wordCountMin || 0) ? "text-green-600" : "text-muted-foreground")}>
+                      {revisedContent.split(/\s+/).filter(w => w.length > 0).length}
+                    </span>
+                    <span className="text-muted-foreground text-xs"> / {assignment.constraints.wordCountMin || 200} words</span>
+                  </div>
                 </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!aiReviewRequested && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-                  <AlertTriangle className="inline h-4 w-4 mr-2" />
-                  Complete the AI Review step first to get feedback for your revision.
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {/* Original Draft Reference (collapsible) */}
+                <details className="rounded-lg border bg-zinc-50 dark:bg-zinc-900">
+                  <summary className="px-3 py-2 text-xs font-medium text-muted-foreground cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                    📄 View Original Draft (click to expand)
+                  </summary>
+                  <div className="px-3 pb-3">
+                    <div className="text-xs text-muted-foreground max-h-40 overflow-y-auto whitespace-pre-wrap border-t pt-2">
+                      {draftContent || "No draft content yet"}
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-6 text-xs mt-2"
+                      onClick={() => setRevisedContent(draftContent)}
+                    >
+                      Copy original to revision →
+                    </Button>
+                  </div>
+                </details>
+                
+                {/* Revision Textarea */}
+                <div className="space-y-1">
+                  <Textarea 
+                    placeholder="Write your revised draft here...&#10;&#10;Tip: Keep this window open while reviewing AI feedback on the left. Fix each issue as you go."
+                    className="min-h-[350px] lg:min-h-[450px] font-mono text-sm"
+                    value={revisedContent}
+                    onChange={(e) => setRevisedContent(e.target.value)}
+                  />
                 </div>
-              )}
-              
-              <div className="rounded-lg border bg-zinc-50 dark:bg-zinc-900 p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-medium text-muted-foreground">Original Draft (Reference)</span>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-6 text-xs"
-                    onClick={() => setRevisedContent(draftContent)}
-                  >
-                    Copy to revision
+                
+                {/* Action Buttons */}
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <Button variant="outline" size="sm" onClick={() => setActiveTab("ai-review")}>
+                    ← Back to AI Review
                   </Button>
+                  <div className="flex gap-2">
+                    {revisedContent && (
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          // Re-run AI review on revised content
+                          const newReview = generateCopyEditorReview(revisedContent)
+                          setAiReviewData({ copyEditor: newReview })
+                          toast.success(`Re-checked! Score: ${newReview.overallScore}/100`)
+                        }}
+                      >
+                        <Brain className="h-3 w-3 mr-1" />
+                        Re-check
+                      </Button>
+                    )}
+                    <Button 
+                      onClick={() => { 
+                        if (revisedContent.length < 100) {
+                          toast.error("Please write at least 100 characters")
+                          return
+                        }
+                        setRevisionCompleted(true)
+                        toast.success("Revision saved!") 
+                        setActiveTab("reflection") 
+                      }} 
+                      className="gap-1"
+                      disabled={revisedContent.length < 100}
+                    >
+                      Save & Continue <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="text-xs text-muted-foreground max-h-32 overflow-y-auto">
-                  {draftContent || "No draft content yet"}
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Revised Draft</Label>
-                <Textarea 
-                  placeholder="Write your revised draft here... Address the feedback from the AI editors."
-                  className="min-h-[400px] font-mono text-sm" 
-                  value={revisedContent}
-                  onChange={(e) => setRevisedContent(e.target.value)}
-                />
-              </div>
-              
-              <div className="flex items-center justify-between">
-                <Button variant="outline" size="sm" onClick={() => setActiveTab("ai-review")}>
-                  ← Back to AI Review
-                </Button>
-                <Button 
-                  onClick={() => { 
-                    if (revisedContent.length < 100) {
-                      toast.error("Please write at least 100 characters")
-                      return
-                    }
-                    setRevisionCompleted(true)
-                    toast.success("Revision saved!") 
-                    setActiveTab("reflection") 
-                  }} 
-                  className="gap-2"
-                  disabled={revisedContent.length < 100}
-                >
-                  Save & Continue <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="reflection" className="space-y-6">
