@@ -107,10 +107,15 @@ function EditorInner() {
   
   const [activeTab, setActiveTab] = useState("plan")
   const [draftContent, setDraftContent] = useState("")
+  const [revisedContent, setRevisedContent] = useState("")
   const [planCompleted, setPlanCompleted] = useState(false)
+  const [planData, setPlanData] = useState({ angle: "", questions: ["", "", "", "", ""] })
   const [showLessonCoach, setShowLessonCoach] = useState(true)
   const [reflectionAnswers, setReflectionAnswers] = useState({})
   const [aiDisclosure, setAiDisclosure] = useState({ tools: "", usage: "" })
+  const [aiReviewRequested, setAiReviewRequested] = useState(false)
+  const [aiReviewLoading, setAiReviewLoading] = useState(false)
+  const [revisionCompleted, setRevisionCompleted] = useState(false)
   const [verificationItems, setVerificationItems] = useState([
     { id: "1", claim: "", evidence: "", sourceType: "URL", sourceRef: "", confidence: "MEDIUM", riskLevel: "LOW" }
   ])
@@ -133,8 +138,8 @@ function EditorInner() {
     plan: planCompleted,
     draft: wordCount >= (assignment.constraints.wordCountMin || 0),
     verification: verifiedItems.length >= (assignment.verificationRules.minItems || 0),
-    "ai-review": false,
-    revision: false,
+    "ai-review": aiReviewRequested,
+    revision: revisionCompleted,
     reflection: Object.values(reflectionAnswers).join(" ").length >= 50,
     submit: false
   }
@@ -244,21 +249,42 @@ function EditorInner() {
             <CardContent className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="angle">Story Angle *</Label>
-                <Textarea id="angle" placeholder="What is the main angle or focus of your story?" className="min-h-[80px]" />
+                <Textarea 
+                  id="angle" 
+                  placeholder="What is the main angle or focus of your story?" 
+                  className="min-h-[80px]" 
+                  value={planData.angle}
+                  onChange={(e) => setPlanData(prev => ({ ...prev, angle: e.target.value }))}
+                />
               </div>
               <div className="space-y-2">
                 <Label>Key Questions to Answer</Label>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Input key={i} placeholder={"Question " + i} className="mb-2" />
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <Input 
+                    key={i} 
+                    placeholder={"Question " + (i + 1)} 
+                    className="mb-2" 
+                    value={planData.questions[i]}
+                    onChange={(e) => {
+                      const newQuestions = [...planData.questions]
+                      newQuestions[i] = e.target.value
+                      setPlanData(prev => ({ ...prev, questions: newQuestions }))
+                    }}
+                  />
                 ))}
               </div>
               <Button 
                 onClick={() => { 
+                  if (!planData.angle.trim()) {
+                    toast.error("Please enter a story angle")
+                    return
+                  }
                   setPlanCompleted(true)
                   toast.success("Plan saved!")
                   setActiveTab("draft") 
                 }} 
                 className="gap-2"
+                disabled={!planData.angle.trim()}
               >
                 Save Plan & Continue <ChevronRight className="h-4 w-4" />
               </Button>
@@ -444,110 +470,244 @@ function EditorInner() {
         </TabsContent>
 
         <TabsContent value="ai-review" className="space-y-6">
-          <div className="rounded-xl border bg-gradient-to-r from-blue-50 via-purple-50 to-blue-50 p-6 dark:from-blue-950/30 dark:via-purple-950/30 dark:to-blue-950/30">
-            <div className="flex items-center gap-3 mb-2">
-              <Brain className="h-6 w-6 text-purple-600" />
-              <h2 className="text-lg font-bold">AI Edit Desk Review</h2>
-            </div>
-            <p className="text-sm text-muted-foreground">Four AI editors have reviewed your draft.</p>
-          </div>
-          
-          <Tabs defaultValue="copy" className="space-y-4">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="copy">Copy Editor</TabsTrigger>
-              <TabsTrigger value="factcheck">Fact-checker</TabsTrigger>
-              <TabsTrigger value="ethics">Ethics</TabsTrigger>
-              <TabsTrigger value="framing">Framing</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="copy">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Copy Editor</CardTitle>
-                  <CardDescription>{demoCopyEditorReview.overallNotes}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <h3 className="font-semibold text-sm mb-2">Must-Fix Items</h3>
-                  {demoCopyEditorReview.mustFix.map((item) => (
-                    <div key={item.id} className="rounded-lg border p-3 mb-2">
-                      <p className="text-sm"><strong>Issue:</strong> {item.issue}</p>
-                      <p className="text-sm text-green-700"><strong>Fix:</strong> {item.fix}</p>
+          {!aiReviewRequested ? (
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900 dark:to-purple-900">
+                    <Brain className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <CardTitle>Request AI Review</CardTitle>
+                    <CardDescription>Four AI editors will review your draft</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  {[
+                    { icon: "✏️", title: "Copy Editor", desc: "Grammar, style, clarity, AP style" },
+                    { icon: "🔍", title: "Fact-checker", desc: "Unsupported claims, verification gaps" },
+                    { icon: "⚖️", title: "Ethics Review", desc: "Fairness, harm, privacy concerns" },
+                    { icon: "🖼️", title: "Framing Analyst", desc: "Missing voices, bias detection" },
+                  ].map((editor) => (
+                    <div key={editor.title} className="rounded-lg border p-3">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">{editor.icon}</span>
+                        <span className="font-medium text-sm">{editor.title}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{editor.desc}</p>
                     </div>
                   ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="factcheck">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Fact-checker</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {demoFactCheckerReview.unsupportedClaims.map((c, i) => (
-                    <div key={i} className="rounded-lg border border-red-200 bg-red-50 p-3 mb-2">
-                      <p className="text-sm"><strong>Unsupported:</strong> {c.quote}</p>
-                      <p className="text-sm">{c.reason}</p>
+                </div>
+                
+                {draftContent.length < 100 && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                    <AlertTriangle className="inline h-4 w-4 mr-2" />
+                    Your draft is too short. Write at least 100 characters before requesting review.
+                  </div>
+                )}
+                
+                <Button 
+                  onClick={async () => {
+                    setAiReviewLoading(true)
+                    // Simulate AI review processing
+                    await new Promise(resolve => setTimeout(resolve, 2000))
+                    setAiReviewRequested(true)
+                    setAiReviewLoading(false)
+                    toast.success("AI review complete! Check each editor's feedback.")
+                  }} 
+                  className="w-full gap-2"
+                  disabled={draftContent.length < 100 || aiReviewLoading}
+                >
+                  {aiReviewLoading ? (
+                    <>
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Analyzing your draft...
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="h-4 w-4" />
+                      Request AI Review
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className="rounded-xl border bg-gradient-to-r from-blue-50 via-purple-50 to-blue-50 p-6 dark:from-blue-950/30 dark:via-purple-950/30 dark:to-blue-950/30">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Brain className="h-6 w-6 text-purple-600" />
+                    <div>
+                      <h2 className="text-lg font-bold">AI Edit Desk Review</h2>
+                      <p className="text-sm text-muted-foreground">Four AI editors have reviewed your draft.</p>
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="ethics">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Ethics Review</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {demoEthicsReview.riskIssues.map((issue, i) => (
-                    <div key={i} className="rounded-lg border p-3 mb-2">
-                      <Badge className="text-xs mb-1">{issue.category}</Badge>
-                      <p className="text-sm">{issue.description}</p>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="framing">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Framing Analysis</CardTitle>
-                  <CardDescription>Dominant Frame: {demoFramingReview.dominantFrame}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <h3 className="font-semibold text-sm">Missing Voices</h3>
-                  <ul className="list-disc list-inside">
-                    {demoFramingReview.missingVoices.map((v, i) => (
-                      <li key={i} className="text-sm">{v}</li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-          
-          <div className="flex justify-end">
-            <Button onClick={() => setActiveTab("revision")} className="gap-2">
-              Start Revision <Sparkles className="h-4 w-4" />
-            </Button>
-          </div>
+                  </div>
+                  <Badge variant="secondary" className="gap-1">
+                    <CheckCircle2 className="h-3 w-3 text-green-600" />
+                    Complete
+                  </Badge>
+                </div>
+              </div>
+              
+              <Tabs defaultValue="copy" className="space-y-4">
+                <TabsList className="grid w-full grid-cols-4">
+                  <TabsTrigger value="copy">✏️ Copy Editor</TabsTrigger>
+                  <TabsTrigger value="factcheck">🔍 Fact-checker</TabsTrigger>
+                  <TabsTrigger value="ethics">⚖️ Ethics</TabsTrigger>
+                  <TabsTrigger value="framing">🖼️ Framing</TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="copy">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Copy Editor</CardTitle>
+                      <CardDescription>{demoCopyEditorReview.overallNotes}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <h3 className="font-semibold text-sm mb-2">Must-Fix Items</h3>
+                      {demoCopyEditorReview.mustFix.map((item) => (
+                        <div key={item.id} className="rounded-lg border p-3 mb-2">
+                          <p className="text-sm"><strong>Issue:</strong> {item.issue}</p>
+                          <p className="text-sm text-green-700"><strong>Fix:</strong> {item.fix}</p>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                
+                <TabsContent value="factcheck">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Fact-checker</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {demoFactCheckerReview.unsupportedClaims.map((c, i) => (
+                        <div key={i} className="rounded-lg border border-red-200 bg-red-50 p-3 mb-2">
+                          <p className="text-sm"><strong>Unsupported:</strong> {c.quote}</p>
+                          <p className="text-sm">{c.reason}</p>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                
+                <TabsContent value="ethics">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Ethics Review</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {demoEthicsReview.riskIssues.map((issue, i) => (
+                        <div key={i} className="rounded-lg border p-3 mb-2">
+                          <Badge className="text-xs mb-1">{issue.category}</Badge>
+                          <p className="text-sm">{issue.description}</p>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                
+                <TabsContent value="framing">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Framing Analysis</CardTitle>
+                      <CardDescription>Dominant Frame: {demoFramingReview.dominantFrame}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <h3 className="font-semibold text-sm">Missing Voices</h3>
+                      <ul className="list-disc list-inside">
+                        {demoFramingReview.missingVoices.map((v, i) => (
+                          <li key={i} className="text-sm">{v}</li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
+              
+              <div className="flex justify-end">
+                <Button onClick={() => setActiveTab("revision")} className="gap-2">
+                  Start Revision <Sparkles className="h-4 w-4" />
+                </Button>
+              </div>
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="revision" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                Draft v2 - Revision
-              </CardTitle>
-              <CardDescription>Address AI feedback and improve your draft.</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    Draft v2 - Revision
+                  </CardTitle>
+                  <CardDescription>Address AI feedback and improve your draft.</CardDescription>
+                </div>
+                <div className="text-right text-sm">
+                  <span className={"font-mono font-medium " + (revisedContent.length > draftContent.length ? "text-green-600" : "text-muted-foreground")}>
+                    {revisedContent.split(/\s+/).filter(w => w.length > 0).length}
+                  </span>
+                  <span className="text-muted-foreground"> words</span>
+                </div>
+              </div>
             </CardHeader>
-            <CardContent>
-              <Textarea placeholder="Write your revised draft here..." className="min-h-[400px] font-mono text-sm" />
-              <div className="mt-4 flex justify-end">
-                <Button onClick={() => { toast.success("Revision saved!"); setActiveTab("reflection") }} className="gap-2">
+            <CardContent className="space-y-4">
+              {!aiReviewRequested && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                  <AlertTriangle className="inline h-4 w-4 mr-2" />
+                  Complete the AI Review step first to get feedback for your revision.
+                </div>
+              )}
+              
+              <div className="rounded-lg border bg-zinc-50 dark:bg-zinc-900 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-muted-foreground">Original Draft (Reference)</span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-6 text-xs"
+                    onClick={() => setRevisedContent(draftContent)}
+                  >
+                    Copy to revision
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground max-h-32 overflow-y-auto">
+                  {draftContent || "No draft content yet"}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Revised Draft</Label>
+                <Textarea 
+                  placeholder="Write your revised draft here... Address the feedback from the AI editors."
+                  className="min-h-[400px] font-mono text-sm" 
+                  value={revisedContent}
+                  onChange={(e) => setRevisedContent(e.target.value)}
+                />
+              </div>
+              
+              <div className="flex items-center justify-between">
+                <Button variant="outline" size="sm" onClick={() => setActiveTab("ai-review")}>
+                  ← Back to AI Review
+                </Button>
+                <Button 
+                  onClick={() => { 
+                    if (revisedContent.length < 100) {
+                      toast.error("Please write at least 100 characters")
+                      return
+                    }
+                    setRevisionCompleted(true)
+                    toast.success("Revision saved!") 
+                    setActiveTab("reflection") 
+                  }} 
+                  className="gap-2"
+                  disabled={revisedContent.length < 100}
+                >
                   Save & Continue <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
@@ -620,37 +780,63 @@ function EditorInner() {
               <CardDescription>All gates must pass before you can submit.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className={"rounded-lg border p-3 text-sm " + (gateResult.allowed ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700")}>
-                {gateResult.allowed ? "All gates passed. Ready to submit!" : gateResult.failures.length + " gate(s) still need attention."}
-              </div>
-              
-              {[
-                { gate: "plan", label: "Reporting plan completed", passed: planCompleted },
-                { gate: "draft", label: "Draft meets word count (" + wordCount + " / " + wordCountLabel + ")", passed: wordCount >= assignment.constraints.wordCountMin },
-                { gate: "verification", label: "Verification table (" + verifiedItems.length + " / " + assignment.verificationRules.minItems + " items)", passed: verifiedItems.length >= assignment.verificationRules.minItems },
-                { gate: "reflection", label: "Reflection completed", passed: Object.values(reflectionAnswers).join(" ").length >= 100 },
-                { gate: "disclosure", label: "AI disclosure completed", passed: !!(aiDisclosure.tools || aiDisclosure.usage) },
-              ].map(({ gate, label, passed }) => (
-                <div key={gate} className={"flex items-center gap-3 rounded-lg border p-3 " + (passed ? "border-green-200 bg-green-50" : "border-zinc-200 bg-zinc-50")}>
-                  {passed ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <Lock className="h-5 w-5 text-zinc-400" />}
-                  <span className={"text-sm " + (passed ? "text-green-700" : "text-muted-foreground")}>{label}</span>
-                </div>
-              ))}
-              
-              <Separator />
-              
-              <Button 
-                size="lg" 
-                className="w-full gap-2" 
-                disabled={!gateResult.allowed} 
-                onClick={() => toast.success("Submission received! Your work is now with your lecturer.")}
-              >
-                {gateResult.allowed ? (
-                  <><Shield className="h-4 w-4" />Submit Final Version</>
-                ) : (
-                  <><Lock className="h-4 w-4" />Submit (Locked)</>
-                )}
-              </Button>
+              {(() => {
+                const gates = [
+                  { gate: "plan", label: "Reporting plan completed", passed: planCompleted },
+                  { gate: "draft", label: "Draft meets word count (" + wordCount + " / " + wordCountLabel + ")", passed: wordCount >= assignment.constraints.wordCountMin },
+                  { gate: "verification", label: "Verification table (" + verifiedItems.length + " / " + assignment.verificationRules.minItems + " items)", passed: verifiedItems.length >= assignment.verificationRules.minItems },
+                  { gate: "ai-review", label: "AI review completed", passed: aiReviewRequested },
+                  { gate: "revision", label: "Revision completed", passed: revisionCompleted },
+                  { gate: "reflection", label: "Reflection completed", passed: Object.values(reflectionAnswers).join(" ").length >= 50 },
+                  { gate: "disclosure", label: "AI disclosure completed", passed: !!(aiDisclosure.tools || aiDisclosure.usage) },
+                ]
+                const passedCount = gates.filter(g => g.passed).length
+                const allPassed = passedCount === gates.length
+                
+                return (
+                  <>
+                    <div className={"rounded-lg border p-3 text-sm " + (allPassed ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700")}>
+                      {allPassed 
+                        ? "✅ All gates passed. Ready to submit!" 
+                        : `${gates.length - passedCount} gate(s) still need attention.`}
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {gates.map(({ gate, label, passed }) => (
+                        <div key={gate} className={"flex items-center gap-3 rounded-lg border p-3 " + (passed ? "border-green-200 bg-green-50" : "border-zinc-200 bg-zinc-50")}>
+                          {passed ? <CheckCircle2 className="h-5 w-5 text-green-600" /> : <Lock className="h-5 w-5 text-zinc-400" />}
+                          <span className={"text-sm flex-1 " + (passed ? "text-green-700" : "text-muted-foreground")}>{label}</span>
+                          {!passed && (
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-7 text-xs"
+                              onClick={() => setActiveTab(gate === "disclosure" ? "reflection" : gate)}
+                            >
+                              Go to step
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <Separator />
+                    
+                    <Button 
+                      size="lg" 
+                      className="w-full gap-2" 
+                      disabled={!allPassed} 
+                      onClick={() => toast.success("🎉 Submission received! Your work is now with your lecturer.")}
+                    >
+                      {allPassed ? (
+                        <><Shield className="h-4 w-4" />Submit Final Version</>
+                      ) : (
+                        <><Lock className="h-4 w-4" />Submit (Locked - {gates.length - passedCount} gates remaining)</>
+                      )}
+                    </Button>
+                  </>
+                )
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
