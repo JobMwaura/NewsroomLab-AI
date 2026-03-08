@@ -355,11 +355,49 @@ export default function CourseDetailPage({ params }) {
                   Gate: {template.gatePreset}
                 </Badge>
               )}
+              {isLecturer && (
+                <Badge className="gap-1 text-xs bg-blue-600">
+                  <GraduationCap className="h-3 w-3" />
+                  Lecturer View
+                </Badge>
+              )}
             </div>
             <h1 className="text-2xl font-bold tracking-tight">{displayTitle}</h1>
             <p className="text-muted-foreground mt-1 max-w-2xl">{displayDescription}</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
+            {isLecturer && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2"
+                onClick={async () => {
+                  setIsDownloading(true)
+                  try {
+                    const response = await fetch(`/api/courses/${id}/marksheet`)
+                    if (!response.ok) throw new Error("Failed to download")
+                    const blob = await response.blob()
+                    const url = window.URL.createObjectURL(blob)
+                    const a = document.createElement("a")
+                    a.href = url
+                    a.download = `${displayCode || "Course"}_Marksheet_${new Date().toISOString().split("T")[0]}.xlsx`
+                    document.body.appendChild(a)
+                    a.click()
+                    window.URL.revokeObjectURL(url)
+                    document.body.removeChild(a)
+                    toast.success("Marksheet downloaded!")
+                  } catch (error) {
+                    toast.error("Failed to download marksheet")
+                  } finally {
+                    setIsDownloading(false)
+                  }
+                }}
+                disabled={isDownloading}
+              >
+                <Download className="h-3.5 w-3.5" />
+                {isDownloading ? "Downloading..." : "Marksheet"}
+              </Button>
+            )}
             <Button asChild variant="outline" size="sm" className="gap-2">
               <Link href="/dashboard/assignments">
                 <ClipboardList className="h-3.5 w-3.5" />Assignments
