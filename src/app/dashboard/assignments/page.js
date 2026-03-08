@@ -185,19 +185,19 @@ export default function AssignmentsPage() {
                         Select a story template. Each template includes word count rules, required sections, verification defaults, and a rubric.
                       </DialogDescription>
                     </DialogHeader>
-                    <Tabs defaultValue={storyTemplateCategories[0]} className="space-y-4">
+                    <Tabs defaultValue={storyTemplateCategories[0]?.id || "NEWSROOM"} className="space-y-4">
                       <TabsList className="w-full flex-wrap h-auto gap-1 p-1">
                         {storyTemplateCategories.map((cat) => (
-                          <TabsTrigger key={cat} value={cat} className="text-xs capitalize">
-                            {cat.toLowerCase()}
+                          <TabsTrigger key={cat.id} value={cat.id} className="text-xs capitalize">
+                            {cat.icon} {cat.label}
                           </TabsTrigger>
                         ))}
                       </TabsList>
                       {storyTemplateCategories.map((cat) => (
-                        <TabsContent key={cat} value={cat}>
+                        <TabsContent key={cat.id} value={cat.id}>
                           <ScrollArea className="max-h-[45vh] pr-4">
                             <div className="grid gap-2">
-                              {getTemplatesByCategory(cat).map((t) => (
+                              {getTemplatesByCategory(cat.id).map((t) => (
                                 <button
                                   key={t.id}
                                   onClick={() => handleSelectTemplate(t)}
