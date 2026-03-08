@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useMemo } from "react"
+import { use, useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import {
   BookOpen, ClipboardList, Users, Calendar, ChevronRight, ArrowLeft,
@@ -276,6 +276,34 @@ export default function CourseDetailPage({ params }) {
   const [activeTab, setActiveTab] = useState("modules")
   const [openTemplateId, setOpenTemplateId] = useState(null)
   const [isDownloading, setIsDownloading] = useState(false)
+  const [course, setCourse] = useState(null)
+  const [loading, setLoading] = useState(true)
+  
+  // Fetch course from API
+  useEffect(() => {
+    async function fetchCourse() {
+      try {
+        // First try fetching from the API (database)
+        const res = await fetch(`/api/courses/${id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setCourse(data.course)
+        } else {
+          // Fall back to demo data
+          const demoCourse = demoCourses.find((c) => c.id === id)
+          setCourse(demoCourse || null)
+        }
+      } catch (error) {
+        console.error("Failed to fetch course:", error)
+        // Fall back to demo data on error
+        const demoCourse = demoCourses.find((c) => c.id === id)
+        setCourse(demoCourse || null)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchCourse()
+  }, [id])
   
   // Grading config state
   const [gradingConfig, setGradingConfig] = useState({
@@ -290,12 +318,19 @@ export default function CourseDetailPage({ params }) {
     ],
   })
 
-  // Find course — try demo data first, then fall back to template preview
-  const course = demoCourses.find((c) => c.id === id)
-
   // Derive template from course code or from the ID itself (when created from template)
   const templateCode = course?.templateId || course?.code?.replace(/\s/g, "") || id.toUpperCase()
   const template = getCourseTemplate(templateCode)
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4" />
+        <p className="text-muted-foreground">Loading course...</p>
+      </div>
+    )
+  }
 
   // If we have neither — show not found
   if (!course && !template) {

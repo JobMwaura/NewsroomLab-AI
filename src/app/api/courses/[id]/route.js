@@ -32,8 +32,22 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({
       course: {
-        ...course,
+        id: course.id,
+        title: course.title,
+        code: course.code,
+        series: course.series,
+        institution: course.institution,
+        semester: course.semester,
+        description: course.description,
+        outcomes: course.outcomes || [],
+        templateId: course.templateId,
+        isArchived: course.isArchived,
+        isPublished: course.isPublished,
+        startDate: course.startDate?.toISOString() || "2026-01-20T08:00:00Z",
         studentCount: course._count.enrollments,
+        assignmentCount: course.assignments?.length || 0,
+        assignments: course.assignments,
+        lecturerId: course.lecturerId,
       },
     })
   } catch (error) {

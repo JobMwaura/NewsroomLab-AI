@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useMemo } from "react"
+import { use, useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import {
   ArrowLeft, ArrowRight, BookOpen, Video, ScrollText, Pencil,
@@ -26,16 +26,41 @@ export default function ModuleWeekPage({ params }) {
   const isLecturer = user?.role === "LECTURER" || user?.role === "ADMIN"
   const [activeTab, setActiveTab] = useState("overview")
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [course, setCourse] = useState(null)
+  const [loading, setLoading] = useState(true)
 
-  // Find course and template
-  const course = demoCourses.find((c) => c.id === id)
-  const templateCode = course?.templateId || course?.code?.replace(/\s/g, "") || id.toUpperCase()
+  // Fetch course from API
+  useEffect(() => {
+    async function fetchCourse() {
+      try {
+        const res = await fetch(`/api/courses/${id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setCourse(data.course)
+        } else {
+          // Fall back to demo data
+          const demoCourse = demoCourses.find((c) => c.id === id)
+          setCourse(demoCourse || null)
+        }
+      } catch (error) {
+        console.error("Failed to fetch course:", error)
+        const demoCourse = demoCourses.find((c) => c.id === id)
+        setCourse(demoCourse || null)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchCourse()
+  }, [id])
+
+  // Derive template from course
+  const templateCode = course?.templateId || course?.code?.replace(/\s/g, "") || ""
   const template = getCourseTemplate(templateCode)
   const courseStartDate = course?.startDate || null
 
   // Get module for this week
-  const module = useMemo(() => getModuleByWeek(templateCode, weekNumber, courseStartDate), [templateCode, weekNumber, courseStartDate])
-  const allModules = useMemo(() => getCourseModules(templateCode, courseStartDate), [templateCode, courseStartDate])
+  const module = useMemo(() => templateCode ? getModuleByWeek(templateCode, weekNumber, courseStartDate) : null, [templateCode, weekNumber, courseStartDate])
+  const allModules = useMemo(() => templateCode ? getCourseModules(templateCode, courseStartDate) : [], [templateCode, courseStartDate])
   const currentWeek = useMemo(() => getCurrentWeek(courseStartDate), [courseStartDate])
 
   // Check access
@@ -45,6 +70,16 @@ export default function ModuleWeekPage({ params }) {
   const prevModule = allModules.find((m) => m.week === weekNumber - 1)
   const nextModule = allModules.find((m) => m.week === weekNumber + 1)
   const canGoNext = nextModule && (nextModule.isUnlocked || isLecturer)
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4" />
+        <p className="text-muted-foreground">Loading module...</p>
+      </div>
+    )
+  }
 
   // Not found state
   if (!module || !course) {
