@@ -289,14 +289,33 @@ export default function CourseDetailPage({ params }) {
           const data = await res.json()
           setCourse(data.course)
         } else {
-          // Fall back to demo data
-          const demoCourse = demoCourses.find((c) => c.id === id)
+          // Fall back to demo data - try both by ID and by template code
+          let demoCourse = demoCourses.find((c) => c.id === id)
+          
+          // If not found by ID, try matching by template code (e.g., "HCC109" -> "course-hcc109")
+          if (!demoCourse) {
+            const lowerCaseId = id.toLowerCase()
+            demoCourse = demoCourses.find((c) => 
+              c.id.toLowerCase().includes(lowerCaseId) || 
+              c.templateId?.toLowerCase() === lowerCaseId ||
+              c.code?.replace(/\s/g, "").toLowerCase() === lowerCaseId
+            )
+          }
+          
           setCourse(demoCourse || null)
         }
       } catch (error) {
         console.error("Failed to fetch course:", error)
         // Fall back to demo data on error
-        const demoCourse = demoCourses.find((c) => c.id === id)
+        let demoCourse = demoCourses.find((c) => c.id === id)
+        if (!demoCourse) {
+          const lowerCaseId = id.toLowerCase()
+          demoCourse = demoCourses.find((c) => 
+            c.id.toLowerCase().includes(lowerCaseId) || 
+            c.templateId?.toLowerCase() === lowerCaseId ||
+            c.code?.replace(/\s/g, "").toLowerCase() === lowerCaseId
+          )
+        }
         setCourse(demoCourse || null)
       } finally {
         setLoading(false)
