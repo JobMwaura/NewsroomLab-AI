@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { demoCourses, getCourseModules, getModuleByWeek, getCurrentWeek } from "@/lib/demo-data"
+import { getCourseModules, getModuleByWeek, getCurrentWeek } from "@/lib/demo-data"
 import { getCourseTemplate } from "@/lib/templates/course-templates"
 import { useAuth } from "@/components/providers/auth-provider"
 

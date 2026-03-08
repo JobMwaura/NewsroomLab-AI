@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/providers/auth-provider"
 import { courseTemplates, courseTemplateCodes, getCourseTemplate } from "@/lib/templates"
-import { getCourseYear, canAccessCourse, demoCourses } from "@/lib/demo-data"
+import { getCourseYear, canAccessCourse } from "@/lib/demo-data"
 import { toast } from "sonner"
 
 export default function CoursesPage() {
@@ -39,18 +39,14 @@ export default function CoursesPage() {
         const res = await fetch("/api/courses")
         if (res.ok) {
           const data = await res.json()
-          const dbCourses = data.courses || []
-          // If we got courses from DB, use them; otherwise fall back to demo
-          setCourses(dbCourses.length > 0 ? dbCourses : demoCourses)
+          setCourses(data.courses || [])
         } else {
-          // API error - fall back to demo data
-          console.log("API returned error, using demo courses")
-          setCourses(demoCourses)
+          console.error("Failed to fetch courses:", res.status)
+          toast.error("Failed to load courses")
         }
       } catch (error) {
         console.error("Failed to fetch courses:", error)
-        // Fall back to demo data on network error
-        setCourses(demoCourses)
+        toast.error("Failed to load courses")
       } finally {
         setLoading(false)
       }

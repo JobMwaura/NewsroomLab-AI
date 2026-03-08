@@ -18,7 +18,7 @@ import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { demoCourses, demoAssignments, demoUsers, getCourseModules, getCurrentWeek } from "@/lib/demo-data"
+import { getCourseModules, getCurrentWeek } from "@/lib/demo-data"
 import { getCourseTemplate } from "@/lib/templates/course-templates"
 import { getStoryTemplate } from "@/lib/templates/story-templates"
 import { getRubricPreset } from "@/lib/templates/rubric-presets"
@@ -283,40 +283,17 @@ export default function CourseDetailPage({ params }) {
   useEffect(() => {
     async function fetchCourse() {
       try {
-        // First try fetching from the API (database)
         const res = await fetch(`/api/courses/${id}`)
         if (res.ok) {
           const data = await res.json()
           setCourse(data.course)
         } else {
-          // Fall back to demo data - try both by ID and by template code
-          let demoCourse = demoCourses.find((c) => c.id === id)
-          
-          // If not found by ID, try matching by template code (e.g., "HCC109" -> "course-hcc109")
-          if (!demoCourse) {
-            const lowerCaseId = id.toLowerCase()
-            demoCourse = demoCourses.find((c) => 
-              c.id.toLowerCase().includes(lowerCaseId) || 
-              c.templateId?.toLowerCase() === lowerCaseId ||
-              c.code?.replace(/\s/g, "").toLowerCase() === lowerCaseId
-            )
-          }
-          
-          setCourse(demoCourse || null)
+          console.error("Failed to fetch course:", res.status)
+          setCourse(null)
         }
       } catch (error) {
         console.error("Failed to fetch course:", error)
-        // Fall back to demo data on error
-        let demoCourse = demoCourses.find((c) => c.id === id)
-        if (!demoCourse) {
-          const lowerCaseId = id.toLowerCase()
-          demoCourse = demoCourses.find((c) => 
-            c.id.toLowerCase().includes(lowerCaseId) || 
-            c.templateId?.toLowerCase() === lowerCaseId ||
-            c.code?.replace(/\s/g, "").toLowerCase() === lowerCaseId
-          )
-        }
-        setCourse(demoCourse || null)
+        setCourse(null)
       } finally {
         setLoading(false)
       }
