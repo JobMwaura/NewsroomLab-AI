@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { BookOpen, Users, ClipboardList, ArrowRight, Plus, Archive, GraduationCap, CheckCircle2, ChevronRight, Eye, EyeOff, Pencil, Settings, MoreVertical, Globe, Lock, Loader2 } from "lucide-react"
+import { BookOpen, Users, ClipboardList, ArrowRight, Plus, Archive, GraduationCap, CheckCircle2, ChevronRight, Eye, EyeOff, Pencil, Settings, MoreVertical, Globe, Lock, Loader2, FolderOpen, Clock } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/providers/auth-provider"
 import { courseTemplates, courseTemplateCodes, getCourseTemplate } from "@/lib/templates"
+import { getCourseYear, canAccessCourse } from "@/lib/demo-data"
 import { toast } from "sonner"
 
 export default function CoursesPage() {
@@ -25,6 +26,11 @@ export default function CoursesPage() {
   const [step, setStep] = useState(1) // 1 = pick template, 2 = configure
   const [courses, setCourses] = useState([])
   const [loading, setLoading] = useState(true)
+
+  // Student year info
+  const studentYear = user?.yearOfStudy || 1
+  const completedYears = user?.completedYears || []
+  const isGraduated = !isLecturer && studentYear === 4 && completedYears.includes(1) && completedYears.includes(2) && completedYears.includes(3)
 
   // Fetch courses from database
   useEffect(() => {
@@ -50,8 +56,29 @@ export default function CoursesPage() {
   const visibleCourses = isLecturer 
     ? courses 
     : courses.filter((c) => c.isPublished)
+
+  // For students, categorize courses by access level
+  const getCourseAccessStatus = (course) => {
+    if (isLecturer) return "active"
+    return canAccessCourse(studentYear, completedYears, course.series || course.code?.replace(/\D/g, ''))
+  }
   
-  const activeCourses = visibleCourses.filter((c) => !c.isArchived)
+  // Active courses for students: only current year
+  // For lecturers: all non-archived courses
+  const activeCourses = isLecturer 
+    ? visibleCourses.filter((c) => !c.isArchived)
+    : visibleCourses.filter((c) => !c.isArchived && getCourseAccessStatus(c) === "active")
+  
+  // Completed/past year courses (locked - view portfolio only)
+  const completedCourses = isLecturer 
+    ? []
+    : visibleCourses.filter((c) => !c.isArchived && getCourseAccessStatus(c) === "completed")
+  
+  // Future courses (not yet accessible)
+  const futureCourses = isLecturer
+    ? []
+    : visibleCourses.filter((c) => !c.isArchived && getCourseAccessStatus(c) === "future")
+  
   const archivedCourses = visibleCourses.filter((c) => c.isArchived)
   
   // Count published/draft for lecturers
@@ -304,11 +331,36 @@ export default function CoursesPage() {
         )}
       </div>
 
-      {/* Active Courses */}
+      {/* Graduated Student Banner */}
+      {isGraduated && (
+        <Card className="border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 dark:border-amber-800">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-amber-100 dark:bg-amber-900/50 rounded-full">
+                <GraduationCap className="h-8 w-8 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg text-amber-900 dark:text-amber-100">Congratulations, Graduate!</h3>
+                <p className="text-amber-700 dark:text-amber-300 mt-1">
+                  You have completed all your journalism courses. Your work is preserved in your portfolio for future reference and job applications.
+                </p>
+                <Link href="/dashboard/portfolio">
+                  <Button className="mt-3 gap-2" variant="outline">
+                    <FolderOpen className="h-4 w-4" />
+                    View Your Portfolio
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Current Year Courses (Active) */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">
-            {isLecturer ? "All Courses" : "Available Courses"}
+            {isLecturer ? "All Courses" : isGraduated ? "Your Completed Courses" : `Year ${studentYear} Courses`}
           </h2>
           {isLecturer && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -324,8 +376,24 @@ export default function CoursesPage() {
               )}
             </div>
           )}
+          {!isLecturer && !isGraduated && (
+            <Badge variant="outline" className="gap-1">
+              <Clock className="h-3 w-3" />
+              {activeCourses.length} active courses
+            </Badge>
+          )}
         </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        
+        {activeCourses.length === 0 && !isGraduated ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+              <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No courses available for your current year.</p>
+              <p className="text-sm text-muted-foreground mt-1">Check back soon or contact your advisor.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {activeCourses.map((course) => (
             <Card key={course.id} className={`h-full transition-all hover:shadow-md hover:border-zinc-300 dark:hover:border-zinc-700 ${!course.isPublished ? 'border-dashed opacity-80' : ''}`}>
               <CardHeader>
@@ -431,8 +499,114 @@ export default function CoursesPage() {
               </CardContent>
             </Card>
           ))}
-        </div>
+          </div>
+        )}
       </div>
+
+      {/* Completed Year Courses (Locked - Portfolio Only) */}
+      {!isLecturer && completedCourses.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2 text-muted-foreground">
+              <Lock className="h-4 w-4" />
+              Previous Year Courses (Completed)
+            </h2>
+            <Link href="/dashboard/portfolio">
+              <Button variant="outline" size="sm" className="gap-2">
+                <FolderOpen className="h-4 w-4" />
+                View Portfolio
+              </Button>
+            </Link>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            These courses are from previous years. Your work is preserved in your portfolio.
+          </p>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {completedCourses.map((course) => (
+              <Card key={course.id} className="h-full opacity-70 border-dashed bg-zinc-50/50 dark:bg-zinc-900/30">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs font-mono">
+                        {course.code}
+                      </Badge>
+                      {course.series && (
+                        <Badge variant="outline" className="text-xs">
+                          Year {getCourseYear(course.series)}
+                        </Badge>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-xs bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Completed
+                    </Badge>
+                  </div>
+                  <CardTitle className="mt-3 text-lg text-muted-foreground">{course.title}</CardTitle>
+                  <CardDescription className="line-clamp-2">
+                    {course.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      {course.assignmentCount || course.assignments?.length || 0} assignments
+                    </div>
+                    <Link href="/dashboard/portfolio">
+                      <div className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700">
+                        View in Portfolio <ArrowRight className="h-3.5 w-3.5" />
+                      </div>
+                    </Link>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Future Year Courses (Coming Soon) */}
+      {!isLecturer && futureCourses.length > 0 && !isGraduated && (
+        <div>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-muted-foreground">
+            <Clock className="h-4 w-4" />
+            Upcoming Courses
+          </h2>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {futureCourses.map((course) => (
+              <Card key={course.id} className="h-full opacity-50 border-dashed">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs font-mono">
+                        {course.code}
+                      </Badge>
+                      {course.series && (
+                        <Badge variant="outline" className="text-xs">
+                          Year {getCourseYear(course.series)}
+                        </Badge>
+                      )}
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      <Lock className="h-3 w-3 mr-1" />
+                      Year {getCourseYear(course.series || course.code?.replace(/\D/g, ''))} Required
+                    </Badge>
+                  </div>
+                  <CardTitle className="mt-3 text-lg text-muted-foreground">{course.title}</CardTitle>
+                  <CardDescription className="line-clamp-2">
+                    {course.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-xs text-muted-foreground">
+                    This course will become available when you reach Year {getCourseYear(course.series || course.code?.replace(/\D/g, ''))}.
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Archived Courses */}
       {archivedCourses.length > 0 && (

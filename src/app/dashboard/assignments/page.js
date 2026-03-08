@@ -12,6 +12,9 @@ import {
   Filter,
   ChevronRight,
   BookOpen,
+  Lock,
+  FolderOpen,
+  GraduationCap,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,7 +27,7 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth } from "@/components/providers/auth-provider"
-import { demoAssignments, demoCourses } from "@/lib/demo-data"
+import { demoAssignments, demoCourses, getCourseYear, canAccessCourse } from "@/lib/demo-data"
 import { STORY_TYPE_LABELS } from "@/lib/types"
 import { storyTemplates, storyTemplateCategories, getTemplatesByCategory, getRubricPreset } from "@/lib/templates"
 import { toast } from "sonner"
@@ -36,6 +39,47 @@ export default function AssignmentsPage() {
   const [selectedTemplate, setSelectedTemplate] = useState(null)
   const [step, setStep] = useState(1)
   const [assignments, setAssignments] = useState(demoAssignments)
+
+  // Student year info
+  const studentYear = user?.yearOfStudy || 1
+  const completedYears = user?.completedYears || []
+  const isGraduated = !isLecturer && studentYear === 4 && completedYears.includes(1) && completedYears.includes(2) && completedYears.includes(3)
+
+  // Helper to get course series from assignment
+  const getAssignmentCourseYear = (assignment) => {
+    // Try to find the course by matching courseName or courseId
+    const course = demoCourses.find(c => 
+      c.title === assignment.courseName || 
+      c.id === assignment.courseId ||
+      assignment.courseName?.includes(c.code)
+    )
+    if (course) {
+      return getCourseYear(course.series || course.code?.replace(/\D/g, ''))
+    }
+    // Fallback: extract from assignment title/course name
+    const codeMatch = assignment.courseName?.match(/HCC\s*(\d)/)
+    if (codeMatch) {
+      return parseInt(codeMatch[1])
+    }
+    return 1 // Default to year 1
+  }
+
+  // Filter assignments based on role and year
+  const filteredAssignments = isLecturer 
+    ? assignments 
+    : assignments.filter(assignment => {
+        const courseYear = getAssignmentCourseYear(assignment)
+        // Only show assignments from current year courses
+        return courseYear === studentYear
+      })
+
+  // Past year assignments (for reference)
+  const pastAssignments = isLecturer 
+    ? []
+    : assignments.filter(assignment => {
+        const courseYear = getAssignmentCourseYear(assignment)
+        return completedYears.includes(courseYear)
+      })
 
   const handleSelectTemplate = (template) => {
     setSelectedTemplate(template)
@@ -78,13 +122,42 @@ export default function AssignmentsPage() {
 
   return (
     <div className="space-y-8">
+      {/* Graduated Student Banner */}
+      {isGraduated && (
+        <Card className="border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 dark:border-amber-800">
+          <CardContent className="p-6">
+            <div className="flex items-start gap-4">
+              <div className="p-3 bg-amber-100 dark:bg-amber-900/50 rounded-full">
+                <GraduationCap className="h-8 w-8 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-lg text-amber-900 dark:text-amber-100">Congratulations, Graduate!</h3>
+                <p className="text-amber-700 dark:text-amber-300 mt-1">
+                  You have completed all your journalism courses and assignments. Your work is preserved in your portfolio.
+                </p>
+                <Link href="/dashboard/portfolio">
+                  <Button className="mt-3 gap-2" variant="outline">
+                    <FolderOpen className="h-4 w-4" />
+                    View Your Portfolio
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Assignments</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {isGraduated ? "Completed Assignments" : "Assignments"}
+          </h1>
           <p className="text-muted-foreground">
             {isLecturer
               ? "Create and manage assignments for your courses."
-              : "Your current and upcoming assignments."}
+              : isGraduated 
+                ? "Your completed journalism assignments."
+                : `Year ${studentYear} assignments for your current courses.`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -247,8 +320,19 @@ export default function AssignmentsPage() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        {assignments.map((assignment) => {
+      {/* Current Assignments Section */}
+      {!isGraduated && (
+        <div className="space-y-4">
+          {filteredAssignments.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No assignments available for Year {studentYear}.</p>
+                <p className="text-sm text-muted-foreground mt-1">Check back soon or contact your instructor.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            filteredAssignments.map((assignment) => {
           const daysUntilDue = Math.ceil(
             (new Date(assignment.dueAt).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
           )
@@ -340,8 +424,61 @@ export default function AssignmentsPage() {
               </Card>
             </Link>
           )
-        })}
-      </div>
+            })
+          )}
+        </div>
+      )}
+
+      {/* Past Assignments Section (for students with completed years) */}
+      {!isLecturer && pastAssignments.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2 text-muted-foreground">
+              <Lock className="h-4 w-4" />
+              Previous Year Assignments (Completed)
+            </h2>
+            <Link href="/dashboard/portfolio">
+              <Button variant="outline" size="sm" className="gap-2">
+                <FolderOpen className="h-4 w-4" />
+                View in Portfolio
+              </Button>
+            </Link>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">
+            These assignments are from previous years. Your completed work is preserved in your portfolio.
+          </p>
+          <div className="space-y-4 opacity-70">
+            {pastAssignments.slice(0, 3).map((assignment) => (
+              <Card key={assignment.id} className="border-dashed bg-zinc-50/50 dark:bg-zinc-900/30">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-zinc-100 dark:bg-zinc-800">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="font-medium text-muted-foreground">{assignment.title}</h3>
+                        <p className="text-xs text-muted-foreground">{assignment.courseName}</p>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Completed
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {pastAssignments.length > 3 && (
+              <Link href="/dashboard/portfolio">
+                <p className="text-sm text-blue-600 hover:text-blue-700 text-center">
+                  View all {pastAssignments.length} past assignments in Portfolio →
+                </p>
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -10,23 +10,117 @@ import {
   AlertCircle,
   CheckCircle2,
   Brain,
+  GraduationCap,
+  Lock,
+  Briefcase,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { useAuth } from "@/components/providers/auth-provider"
-import { studentDashboardStats } from "@/lib/demo-data"
+import { studentDashboardStats, getYearLabel } from "@/lib/demo-data"
 import { SUBMISSION_STATUS_LABELS, SUBMISSION_STATUS_COLORS } from "@/lib/types"
 
 export function StudentDashboard() {
   const { user } = useAuth()
   const stats = studentDashboardStats
+  
+  // Check if student is graduated (completed all 4 years)
+  const isGraduated = user?.isGraduated || (user?.completedYears?.length >= 4)
+  const yearOfStudy = user?.yearOfStudy || 1
+  const completedYears = user?.completedYears || []
+
+  // If graduated, show portfolio-only view
+  if (isGraduated) {
+    return (
+      <div className="space-y-8">
+        {/* Graduated Banner */}
+        <div className="rounded-xl border border-green-200 bg-green-50 dark:bg-green-950/30 p-6">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-full bg-green-100 dark:bg-green-900">
+              <GraduationCap className="h-8 w-8 text-green-600" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight">
+                Congratulations, {user?.name?.split(" ")[0]}! 🎓
+              </h1>
+              <p className="text-muted-foreground">
+                You have completed your journalism program. Your portfolio contains all your work.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Portfolio Access Card */}
+        <Card className="border-2 border-blue-200">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Briefcase className="h-5 w-5" />
+              Your Journalism Portfolio
+            </CardTitle>
+            <CardDescription>
+              Access all your completed work from all 4 years of study
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((year) => (
+                <div key={year} className="rounded-lg border bg-green-50 dark:bg-green-950/30 p-3 text-center">
+                  <CheckCircle2 className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                  <p className="text-xs font-medium">{getYearLabel(year)}</p>
+                  <p className="text-xs text-muted-foreground">Completed</p>
+                </div>
+              ))}
+            </div>
+            <Link href="/dashboard/portfolio">
+              <Button className="w-full gap-2">
+                <Briefcase className="h-4 w-4" />
+                View Full Portfolio
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Stats Summary */}
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total Submissions</p>
+              <p className="text-2xl font-bold">{stats.completedAssignments}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Overall Average</p>
+              <p className="text-2xl font-bold">{stats.averageScore}%</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Years Completed</p>
+              <p className="text-2xl font-bold">4</p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-8">
       {/* Welcome Section */}
       <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Badge variant="outline" className="text-xs">
+            {getYearLabel(yearOfStudy)} Student
+          </Badge>
+          {completedYears.length > 0 && (
+            <Badge variant="secondary" className="text-xs">
+              {completedYears.length} year{completedYears.length > 1 ? "s" : ""} completed
+            </Badge>
+          )}
+        </div>
         <h1 className="text-2xl font-bold tracking-tight">
           Welcome back, {user?.name?.split(" ")[0]} 👋
         </h1>

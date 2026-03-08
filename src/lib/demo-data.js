@@ -1,6 +1,45 @@
 // ─── Demo Data for Local Development ────────────────────
 // This provides realistic mock data so the UI works without a database
 
+// ─── Year/Course Level Helpers ──────────────────────────
+// Course series: 100 = Year 1, 200 = Year 2, 300 = Year 3, 400 = Year 4
+
+export function getCourseYear(series) {
+  const seriesNum = parseInt(series)
+  if (seriesNum >= 100 && seriesNum < 200) return 1
+  if (seriesNum >= 200 && seriesNum < 300) return 2
+  if (seriesNum >= 300 && seriesNum < 400) return 3
+  if (seriesNum >= 400 && seriesNum < 500) return 4
+  return 1
+}
+
+// Returns: "active" (current year), "completed" (past year), "future" (not yet), "locked" (inaccessible)
+export function canAccessCourse(userYearOfStudy, courseSeries, completedYears = []) {
+  const courseYear = getCourseYear(courseSeries)
+  
+  // Current year course = active
+  if (courseYear === userYearOfStudy) return "active"
+  
+  // Past year that's been completed
+  if (completedYears.includes(courseYear)) return "completed"
+  
+  // Future year (not yet reached)
+  if (courseYear > userYearOfStudy) return "future"
+  
+  // Past year not completed (shouldn't normally happen)
+  return "locked"
+}
+
+export function isCourseCompleted(courseSeries, completedYears = []) {
+  const courseYear = getCourseYear(courseSeries)
+  return completedYears.includes(courseYear)
+}
+
+export function getYearLabel(year) {
+  const labels = { 1: "1st Year", 2: "2nd Year", 3: "3rd Year", 4: "4th Year" }
+  return labels[year] || `Year ${year}`
+}
+
 // ─── Users ──────────────────────────────────────────────
 
 export const demoUsers = [
@@ -24,6 +63,8 @@ export const demoUsers = [
     email: "amina.w@student.ac.ke",
     role: "STUDENT",
     avatarUrl: "",
+    yearOfStudy: 3, // 3rd year student
+    completedYears: [1, 2], // Completed 1st and 2nd year
   },
   {
     id: "user-student-2",
@@ -31,6 +72,8 @@ export const demoUsers = [
     email: "brian.o@student.ac.ke",
     role: "STUDENT",
     avatarUrl: "",
+    yearOfStudy: 2, // 2nd year student
+    completedYears: [1], // Completed 1st year
   },
   {
     id: "user-student-3",
@@ -38,6 +81,8 @@ export const demoUsers = [
     email: "cynthia.m@student.ac.ke",
     role: "STUDENT",
     avatarUrl: "",
+    yearOfStudy: 4, // 4th year student (final year)
+    completedYears: [1, 2, 3], // Completed years 1-3
   },
   {
     id: "user-student-4",
@@ -45,6 +90,8 @@ export const demoUsers = [
     email: "david.k@student.ac.ke",
     role: "STUDENT",
     avatarUrl: "",
+    yearOfStudy: 1, // 1st year student
+    completedYears: [], // No completed years
   },
   {
     id: "user-student-5",
@@ -52,6 +99,9 @@ export const demoUsers = [
     email: "esther.a@student.ac.ke",
     role: "STUDENT",
     avatarUrl: "",
+    yearOfStudy: 4, // 4th year student who finished
+    completedYears: [1, 2, 3, 4], // Completed all years (graduated)
+    isGraduated: true,
   },
 ]
 
