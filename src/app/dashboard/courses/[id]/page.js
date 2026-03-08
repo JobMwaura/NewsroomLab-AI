@@ -318,6 +318,11 @@ export default function CourseDetailPage({ params }) {
   const templateCode = course?.templateId || course?.code?.replace(/\s/g, "") || id.toUpperCase()
   const template = getCourseTemplate(templateCode)
 
+  // 10-Week Modules with drip release - MUST be before early returns
+  const courseStartDate = course?.startDate || null
+  const courseModules = useMemo(() => getCourseModules(templateCode, courseStartDate), [templateCode, courseStartDate])
+  const currentWeek = useMemo(() => getCurrentWeek(courseStartDate), [courseStartDate])
+
   // Loading state
   if (loading) {
     return (
@@ -347,11 +352,6 @@ export default function CourseDetailPage({ params }) {
   // Rubric
   const rubricId = template?.defaultRubricId
   const rubric = rubricId ? getRubricPreset(rubricId) : null
-
-  // 10-Week Modules with drip release
-  const courseStartDate = course?.startDate || null
-  const courseModules = useMemo(() => getCourseModules(templateCode, courseStartDate), [templateCode, courseStartDate])
-  const currentWeek = useMemo(() => getCurrentWeek(courseStartDate), [courseStartDate])
 
   // Gate preset
   const gateRules = template?.gatePreset ? getGatePresetRules(template.gatePreset) : {}
