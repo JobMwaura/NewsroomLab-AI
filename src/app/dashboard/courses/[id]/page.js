@@ -7,6 +7,7 @@ import {
   CheckCircle2, Clock, FileText, Shield, Brain, Eye, GraduationCap,
   AlertTriangle, Lock, Unlock, BadgeCheck, BarChart2, Layers,
   Download, Settings, Table2, Play, ScrollText, Pencil, Video,
+  Info, Library, ExternalLink, BookMarked,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -24,6 +25,8 @@ import { getStoryTemplate } from "@/lib/templates/story-templates"
 import { getRubricPreset } from "@/lib/templates/rubric-presets"
 import { getReflectionPromptSet } from "@/lib/templates/reflection-prompts"
 import { getGatePresetRules } from "@/lib/verification-gate"
+import { getCourseOverview } from "@/lib/templates/course-overviews"
+import { getResourcesByCourse, resourceCategories } from "@/lib/templates/resource-centre"
 import { useAuth } from "@/components/providers/auth-provider"
 import { toast } from "sonner"
 
@@ -273,7 +276,7 @@ export default function CourseDetailPage({ params }) {
   const { id } = use(params)
   const { user } = useAuth()
   const isLecturer = user?.role === "LECTURER" || user?.role === "ADMIN"
-  const [activeTab, setActiveTab] = useState("modules")
+  const [activeTab, setActiveTab] = useState("overview")
   const [openTemplateId, setOpenTemplateId] = useState(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [course, setCourse] = useState(null)
@@ -358,6 +361,12 @@ export default function CourseDetailPage({ params }) {
 
   // Reflection prompts
   const reflectionSet = template?.reflectionPromptSetId ? getReflectionPromptSet(template.reflectionPromptSetId) : null
+
+  // Course overview (detailed introduction)
+  const courseOverview = getCourseOverview(templateCode)
+  
+  // Resources for this course (lecturer only)
+  const courseResources = isLecturer ? getResourcesByCourse(templateCode) : []
 
   const displayTitle = course?.title || template?.title || "Untitled Course"
   const displayCode = course?.code || template?.code || ""
@@ -474,13 +483,321 @@ export default function CourseDetailPage({ params }) {
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="flex-wrap">
-            <TabsTrigger value="modules">� Modules (10 Weeks)</TabsTrigger>
-            <TabsTrigger value="assignments">� Assignments</TabsTrigger>
+            <TabsTrigger value="overview">📋 Overview</TabsTrigger>
+            <TabsTrigger value="modules">📚 Modules (10 Weeks)</TabsTrigger>
+            <TabsTrigger value="assignments">📝 Assignments</TabsTrigger>
             <TabsTrigger value="outcomes">🎯 Outcomes</TabsTrigger>
             <TabsTrigger value="rubric">📊 Rubric</TabsTrigger>
             <TabsTrigger value="gates">🔒 Gates</TabsTrigger>
-            {isLecturer && <TabsTrigger value="grading">📝 Grading & Marksheet</TabsTrigger>}
+            {isLecturer && <TabsTrigger value="resources">📖 Resources</TabsTrigger>}
+            {isLecturer && <TabsTrigger value="grading">⚙️ Grading</TabsTrigger>}
           </TabsList>
+
+          {/* ── Overview Tab ───────────────────────── */}
+          <TabsContent value="overview" className="space-y-6">
+            {courseOverview ? (
+              <div className="space-y-8">
+                {/* Introduction */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Info className="h-5 w-5 text-blue-600" />
+                      <CardTitle>Course Introduction</CardTitle>
+                    </div>
+                    {courseOverview.tagline && (
+                      <CardDescription className="text-base italic">
+                        &ldquo;{courseOverview.tagline}&rdquo;
+                      </CardDescription>
+                    )}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm dark:prose-invert max-w-none">
+                      {courseOverview.introduction.split('\n').map((line, i) => {
+                        if (line.startsWith('# ')) {
+                          return <h1 key={i} className="text-xl font-bold mt-4 mb-2">{line.slice(2)}</h1>
+                        } else if (line.startsWith('## ')) {
+                          return <h2 key={i} className="text-lg font-semibold mt-4 mb-2">{line.slice(3)}</h2>
+                        } else if (line.startsWith('- **')) {
+                          const match = line.match(/- \*\*(.+?)\*\* – (.+)/)
+                          if (match) {
+                            return <p key={i} className="ml-4"><strong>{match[1]}</strong> — {match[2]}</p>
+                          }
+                        } else if (line.trim()) {
+                          return <p key={i}>{line}</p>
+                        }
+                        return null
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Learning Objectives */}
+                {courseOverview.objectives && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <BadgeCheck className="h-5 w-5 text-green-600" />
+                        Learning Objectives
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2">
+                        {courseOverview.objectives.map((obj, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                            <span className="text-sm">{obj}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Week by Week Overview */}
+                {courseOverview.weekByWeek && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Calendar className="h-5 w-5 text-purple-600" />
+                        10-Week Journey
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2 pr-4 font-semibold">Week</th>
+                              <th className="text-left py-2 pr-4 font-semibold">Topic</th>
+                              <th className="text-left py-2 font-semibold">Key Skills</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {courseModules.map((mod) => (
+                              <tr key={mod.week} className="border-b border-dashed">
+                                <td className="py-2 pr-4 font-medium">{mod.week}</td>
+                                <td className="py-2 pr-4">{mod.title}</td>
+                                <td className="py-2 text-muted-foreground">{mod.overview}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Assessment Overview */}
+                {courseOverview.assessmentOverview && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <BarChart2 className="h-5 w-5 text-amber-600" />
+                        Assessment Structure
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid md:grid-cols-2 gap-4">
+                        <div className="rounded-lg border p-4 bg-blue-50 dark:bg-blue-950/30">
+                          <div className="text-3xl font-bold text-blue-700 dark:text-blue-400">30%</div>
+                          <div className="text-sm font-semibold mt-1">Continuous Assessment</div>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            10 weekly assignments (3 marks each). AI assistance tracked. All submissions verified.
+                          </p>
+                        </div>
+                        <div className="rounded-lg border p-4 bg-purple-50 dark:bg-purple-950/30">
+                          <div className="text-3xl font-bold text-purple-700 dark:text-purple-400">70%</div>
+                          <div className="text-sm font-semibold mt-1">Final Examination</div>
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Practical writing examination under timed conditions without AI assistance.
+                          </p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Expectations */}
+                {courseOverview.expectations && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Shield className="h-5 w-5 text-red-600" />
+                        Expectations & Academic Integrity
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="prose prose-sm dark:prose-invert max-w-none">
+                        {courseOverview.expectations.split('\n').map((line, i) => {
+                          if (line.startsWith('### ')) {
+                            return <h3 key={i} className="text-base font-semibold mt-4 mb-2">{line.slice(4)}</h3>
+                          } else if (line.startsWith('- ')) {
+                            return <li key={i} className="ml-4">{line.slice(2)}</li>
+                          } else if (line.trim() && !line.startsWith('##')) {
+                            return <p key={i}>{line}</p>
+                          }
+                          return null
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Required Resources */}
+                {courseOverview.requiredResources && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <BookMarked className="h-5 w-5 text-emerald-600" />
+                        Required Resources
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {courseOverview.requiredResources.map((res, i) => (
+                          <div key={i} className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
+                            <div className="text-lg">
+                              {res.type === 'textbook' && '📕'}
+                              {res.type === 'tool' && '🛠️'}
+                              {res.type === 'subscription' && '📰'}
+                              {res.type === 'reference' && '📋'}
+                              {res.type === 'collection' && '📚'}
+                            </div>
+                            <div>
+                              <div className="font-medium text-sm">{res.title}</div>
+                              {res.author && <div className="text-xs text-muted-foreground">by {res.author}</div>}
+                              {res.note && <div className="text-xs text-muted-foreground mt-1">{res.note}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Lecturer's Welcome Note */}
+                {courseOverview.lecturerNotes && (
+                  <Card className="border-blue-200 dark:border-blue-900 bg-blue-50/50 dark:bg-blue-950/20">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <GraduationCap className="h-5 w-5 text-blue-600" />
+                        Lecturer&apos;s Welcome
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="prose prose-sm dark:prose-invert max-w-none italic">
+                        {courseOverview.lecturerNotes.split('\n').map((line, i) => {
+                          if (line.trim() && !line.startsWith('#')) {
+                            return <p key={i}>{line}</p>
+                          }
+                          return null
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-12 text-muted-foreground">
+                <Info className="h-8 w-8 mx-auto mb-3 opacity-40" />
+                <p>Course overview not available for this course.</p>
+                <p className="text-sm mt-2">Check the Modules tab for weekly content.</p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* ── Resources Tab (Lecturers Only) ───────────────────────── */}
+          {isLecturer && (
+            <TabsContent value="resources" className="space-y-6">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Library className="h-5 w-5" />
+                    Resource Centre
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Teaching resources, examples, and reference materials for {displayCode}.
+                  </p>
+                </div>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/dashboard/resources">
+                    View All Resources <ExternalLink className="h-3.5 w-3.5 ml-2" />
+                  </Link>
+                </Button>
+              </div>
+
+              {courseResources.length > 0 ? (
+                <div className="space-y-6">
+                  {courseResources.map(({ category, items }) => (
+                    <Card key={category.id}>
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <span>{category.icon}</span>
+                          {category.title}
+                        </CardTitle>
+                        <CardDescription>{category.description}</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-3">
+                          {items.slice(0, 3).map((item) => (
+                            <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg border hover:border-primary/50 transition-colors cursor-pointer">
+                              <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                item.quality === 'excellent' ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400' :
+                                item.quality === 'good' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400' :
+                                item.quality === 'poor' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' :
+                                'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-400'
+                              }`}>
+                                {item.quality === 'excellent' && '✓ Excellent'}
+                                {item.quality === 'good' && '◐ Good'}
+                                {item.quality === 'poor' && '✕ Poor Example'}
+                                {item.quality === 'reference' && '📋 Reference'}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-sm">{item.title}</div>
+                                <div className="text-xs text-muted-foreground mt-0.5">
+                                  {item.source} • {item.year}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                  {item.description}
+                                </p>
+                                {item.teachingPoints && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {item.teachingPoints.slice(0, 2).map((point, i) => (
+                                      <span key={i} className="text-xs bg-muted px-2 py-0.5 rounded">
+                                        {point}
+                                      </span>
+                                    ))}
+                                    {item.teachingPoints.length > 2 && (
+                                      <span className="text-xs text-muted-foreground">
+                                        +{item.teachingPoints.length - 2} more
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          {items.length > 3 && (
+                            <Button variant="ghost" size="sm" className="w-full text-muted-foreground">
+                              View {items.length - 3} more resources →
+                            </Button>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Library className="h-8 w-8 mx-auto mb-3 opacity-40" />
+                  <p>No resources linked to this course yet.</p>
+                  <Button asChild variant="outline" size="sm" className="mt-4">
+                    <Link href="/dashboard/resources">Browse All Resources</Link>
+                  </Button>
+                </div>
+              )}
+            </TabsContent>
+          )}
 
           {/* ── Assignments Tab ───────────────────────── */}
           <TabsContent value="assignments" className="space-y-4">
