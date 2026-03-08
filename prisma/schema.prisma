@@ -132,10 +132,11 @@ model Course {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  lecturer    User               @relation("CourseLecturer", fields: [lecturerId], references: [id])
-  enrollments CourseEnrollment[]
-  assignments Assignment[]
-  rubrics     Rubric[]
+  lecturer      User                 @relation("CourseLecturer", fields: [lecturerId], references: [id])
+  enrollments   CourseEnrollment[]
+  assignments   Assignment[]
+  rubrics       Rubric[]
+  gradingConfig CourseGradingConfig?
 
   @@map("courses")
 }
@@ -191,9 +192,10 @@ model Assignment {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  rubric      Rubric?      @relation(fields: [rubricId], references: [id])
-  submissions Submission[]
+  course        Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  rubric        Rubric?                  @relation(fields: [rubricId], references: [id])
+  submissions   Submission[]
+  gradingConfig AssignmentGradingConfig?
 
   @@map("assignments")
 }
@@ -376,4 +378,72 @@ model AuditLog {
   user User? @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
+}
+
+// ─── GRADING & MARKSHEET MODELS ─────────────────────────
+
+enum AgreedMarkRule {
+  MANUAL
+  AVERAGE_IE_EE
+  MODERATED_IE_EE
+}
+
+model CourseGradingConfig {
+  id               String         @id @default(cuid())
+  courseId         String         @unique @map("course_id")
+  caWeight         Int            @default(30) @map("ca_weight")
+  examWeight       Int            @default(70) @map("exam_weight")
+  gradeScale       Json           @default("[{\"grade\":\"A\",\"min\":75,\"max\":100},{\"grade\":\"B\",\"min\":65,\"max\":74},{\"grade\":\"C\",\"min\":50,\"max\":64},{\"grade\":\"D\",\"min\":40,\"max\":49},{\"grade\":\"E\",\"min\":0,\"max\":39}]") @map("grade_scale")
+  agreedMarkRule   AgreedMarkRule @default(AVERAGE_IE_EE) @map("agreed_mark_rule")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@map("course_grading_configs")
+}
+
+model AssignmentGradingConfig {
+  id             String   @id @default(cuid())
+  assignmentId   String   @unique @map("assignment_id")
+  maxMarks       Int      @default(10) @map("max_marks")
+  countsTowardCa Boolean  @default(true) @map("counts_toward_ca")
+  caSlot         Int?     @map("ca_slot")
+  weightWithinCa Float?   @map("weight_within_ca")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@map("assignment_grading_configs")
+}
+
+model ExamScore {
+  id          String   @id @default(cuid())
+  courseId    String   @map("course_id")
+  studentId   String   @map("student_id")
+  examScore70 Float    @map("exam_score_70")
+  enteredBy   String   @map("entered_by")
+  enteredAt   DateTime @default(now()) @map("entered_at")
+
+  @@unique([courseId, studentId])
+  @@map("exam_scores")
+}
+
+model FinalMark {
+  id            String   @id @default(cuid())
+  courseId      String   @map("course_id")
+  studentId     String   @map("student_id")
+  caTotal30     Float?   @map("ca_total_30")
+  examScore70   Float?   @map("exam_score_70")
+  ieTotal100    Float?   @map("ie_total_100")
+  eeMark100     Float?   @map("ee_mark_100")
+  agreedMark100 Float?   @map("agreed_mark_100")
+  finalGrade    String?  @map("final_grade")
+  enteredBy     String   @map("entered_by")
+  enteredAt     DateTime @default(now()) @map("entered_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([courseId, studentId])
+  @@map("final_marks")
 }

@@ -6,6 +6,7 @@ import {
   BookOpen, ClipboardList, Users, Calendar, ChevronRight, ArrowLeft,
   CheckCircle2, Clock, FileText, Shield, Brain, Eye, GraduationCap,
   AlertTriangle, Lock, Unlock, BadgeCheck, BarChart2, Layers,
+  Download, Settings, Table2,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -14,12 +15,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
-import { demoCourses, demoAssignments } from "@/lib/demo-data"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { demoCourses, demoAssignments, demoUsers } from "@/lib/demo-data"
 import { getCourseTemplate } from "@/lib/templates/course-templates"
 import { getStoryTemplate } from "@/lib/templates/story-templates"
 import { getRubricPreset } from "@/lib/templates/rubric-presets"
 import { getReflectionPromptSet } from "@/lib/templates/reflection-prompts"
 import { getGatePresetRules } from "@/lib/verification-gate"
+import { useAuth } from "@/components/providers/auth-provider"
+import { toast } from "sonner"
 
 // ─── Category colour map ─────────────────────────────────
 const CATEGORY_COLORS = {
@@ -265,8 +271,24 @@ function AssignmentDetailSheet({ templateId, onClose }) {
 
 export default function CourseDetailPage({ params }) {
   const { id } = use(params)
+  const { user } = useAuth()
+  const isLecturer = user?.role === "LECTURER" || user?.role === "ADMIN"
   const [activeTab, setActiveTab] = useState("assignments")
   const [openTemplateId, setOpenTemplateId] = useState(null)
+  const [isDownloading, setIsDownloading] = useState(false)
+  
+  // Grading config state
+  const [gradingConfig, setGradingConfig] = useState({
+    caWeight: 30,
+    examWeight: 70,
+    gradeScale: [
+      { grade: "A", min: 75, max: 100 },
+      { grade: "B", min: 65, max: 74 },
+      { grade: "C", min: 50, max: 64 },
+      { grade: "D", min: 40, max: 49 },
+      { grade: "E", min: 0, max: 39 },
+    ],
+  })
 
   // Find course — try demo data first, then fall back to template preview
   const course = demoCourses.find((c) => c.id === id)
@@ -377,12 +399,13 @@ export default function CourseDetailPage({ params }) {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="assignments">📋 Assignments</TabsTrigger>
             <TabsTrigger value="weekly">📅 Weekly Plan</TabsTrigger>
             <TabsTrigger value="outcomes">🎯 Outcomes</TabsTrigger>
             <TabsTrigger value="rubric">📊 Rubric</TabsTrigger>
             <TabsTrigger value="gates">🔒 Gates</TabsTrigger>
+            {isLecturer && <TabsTrigger value="grading">📝 Grading & Marksheet</TabsTrigger>}
           </TabsList>
 
           {/* ── Assignments Tab ───────────────────────── */}
@@ -564,6 +587,199 @@ export default function CourseDetailPage({ params }) {
               </div>
             </div>
           </TabsContent>
+
+          {/* ── Grading & Marksheet Tab (Lecturers Only) ── */}
+          {isLecturer && (
+            <TabsContent value="grading" className="space-y-6">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Table2 className="h-5 w-5" />
+                    Grading Configuration & Marksheet
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Configure grading weights and download the Excel marksheet for this course.
+                  </p>
+                </div>
+                <Button 
+                  onClick={async () => {
+                    setIsDownloading(true)
+                    try {
+                      const response = await fetch(`/api/courses/${id}/marksheet`)
+                      if (!response.ok) throw new Error("Failed to download")
+                      const blob = await response.blob()
+                      const url = window.URL.createObjectURL(blob)
+                      const a = document.createElement("a")
+                      a.href = url
+                      a.download = `${displayCode || "Course"}_Marksheet_${new Date().toISOString().split("T")[0]}.xlsx`
+                      document.body.appendChild(a)
+                      a.click()
+                      window.URL.revokeObjectURL(url)
+                      document.body.removeChild(a)
+                      toast.success("Marksheet downloaded successfully!")
+                    } catch (error) {
+                      console.error("Download error:", error)
+                      toast.error("Failed to download marksheet")
+                    } finally {
+                      setIsDownloading(false)
+                    }
+                  }}
+                  disabled={isDownloading}
+                  className="gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  {isDownloading ? "Generating..." : "Download Marksheet (Excel)"}
+                </Button>
+              </div>
+
+              {/* Grading Weight Config */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Settings className="h-4 w-4" />
+                    Assessment Weighting
+                  </CardTitle>
+                  <CardDescription>
+                    Configure how continuous assessment (CA) and exams contribute to the final grade.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="caWeight">CA Weight (%)</Label>
+                      <Input 
+                        id="caWeight" 
+                        type="number" 
+                        min="0" 
+                        max="100"
+                        value={gradingConfig.caWeight}
+                        onChange={(e) => {
+                          const ca = parseInt(e.target.value) || 0
+                          setGradingConfig(prev => ({
+                            ...prev,
+                            caWeight: ca,
+                            examWeight: 100 - ca,
+                          }))
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="examWeight">Exam Weight (%)</Label>
+                      <Input 
+                        id="examWeight" 
+                        type="number" 
+                        min="0" 
+                        max="100"
+                        value={gradingConfig.examWeight}
+                        onChange={(e) => {
+                          const exam = parseInt(e.target.value) || 0
+                          setGradingConfig(prev => ({
+                            ...prev,
+                            examWeight: exam,
+                            caWeight: 100 - exam,
+                          }))
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    CA ({gradingConfig.caWeight}%) + Exam ({gradingConfig.examWeight}%) = 100%
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* Assignment CA Contribution */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Assignment CA Contribution
+                  </CardTitle>
+                  <CardDescription>
+                    Select which assignments count toward Continuous Assessment. 
+                    Assignment marks are scaled to {gradingConfig.caWeight}% automatically.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {assignmentTemplates.length > 0 ? (
+                      assignmentTemplates.map((t, idx) => (
+                        <div key={t.id} className="flex items-center justify-between p-3 rounded-lg border">
+                          <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-xs font-semibold">
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <p className="text-sm font-medium">{t.name || t.label}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Max: 10 marks • {t.wordCountRange?.min || 300}–{t.wordCountRange?.max || 800} words
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Badge variant="outline" className="text-xs">Counts toward CA</Badge>
+                            <Switch defaultChecked />
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No assignments configured for this course.
+                      </p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Grade Scale */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BarChart2 className="h-4 w-4" />
+                    Grade Scale
+                  </CardTitle>
+                  <CardDescription>
+                    Define the grade boundaries. Grades are calculated based on the final agreed mark.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-5 gap-2">
+                    {gradingConfig.gradeScale.map((gs, idx) => (
+                      <div key={gs.grade} className="text-center p-3 rounded-lg border">
+                        <div className="text-2xl font-bold">{gs.grade}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {gs.min}–{gs.max}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Marksheet Info */}
+              <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
+                <CardContent className="pt-6">
+                  <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    About the Marksheet Export
+                  </h3>
+                  <ul className="text-sm text-muted-foreground space-y-1.5">
+                    <li>• <strong>Assignment columns</strong>: Raw marks per assignment (e.g., 0–10)</li>
+                    <li>• <strong>CA Total ({gradingConfig.caWeight})</strong>: Auto-calculated from assignments</li>
+                    <li>• <strong>Exam ({gradingConfig.examWeight})</strong>: Blank, for manual entry (0–{gradingConfig.examWeight})</li>
+                    <li>• <strong>IE Total (100)</strong>: CA + Exam, auto-calculated</li>
+                    <li>• <strong>EE Mark (100)</strong>: External examiner mark, blank for manual entry</li>
+                    <li>• <strong>Agreed Mark (100)</strong>: Average of IE and EE (can be overridden)</li>
+                    <li>• <strong>Grade</strong>: Auto-calculated from agreed mark (or IE if EE not entered)</li>
+                  </ul>
+                  <Separator className="my-4" />
+                  <p className="text-xs text-muted-foreground">
+                    The Excel file includes data validation, formulas, and signature blocks for lecturer and external examiner.
+                  </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </>
