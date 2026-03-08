@@ -6,3 +6,4 @@ export { storyTemplates, getStoryTemplate, getTemplatesByCategory, storyTemplate
 export { rubricPresets, getRubricPreset, rubricPresetIds } from "./rubric-presets"
 export { microLessons, getMicroLesson, getMicroLessonsForTemplate, microLessonIds } from "./micro-lessons"
 export { reflectionPromptSets, getReflectionPromptSet, getReflectionPromptsForCourse, reflectionPromptSetIds } from "./reflection-prompts"
+export { weeklyModules, getWeeklyModules, getWeek, getAllCourseCodes, calculateUnlockDate, isWeekUnlocked, getWeekCAWeight } from "./weekly-modules"

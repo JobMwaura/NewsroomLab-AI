@@ -1,6 +1,8 @@
 // ─── Demo Data for Local Development ────────────────────
 // This provides realistic mock data so the UI works without a database
 
+import { weeklyModules, isWeekUnlocked, calculateUnlockDate } from "./templates/weekly-modules"
+
 // ─── Year/Course Level Helpers ──────────────────────────
 // Course series: 100 = Year 1, 200 = Year 2, 300 = Year 3, 400 = Year 4
 
@@ -38,6 +40,39 @@ export function isCourseCompleted(courseSeries, completedYears = []) {
 export function getYearLabel(year) {
   const labels = { 1: "1st Year", 2: "2nd Year", 3: "3rd Year", 4: "4th Year" }
   return labels[year] || `Year ${year}`
+}
+
+// ─── Module/Week Helpers ────────────────────────────────
+
+export function getCourseModules(courseTemplateId, courseStartDate = null) {
+  const template = weeklyModules[courseTemplateId]
+  if (!template) return []
+  
+  const currentDate = new Date()
+  // Default start date: 6 weeks ago (so weeks 1-6 are unlocked)
+  const startDate = courseStartDate || new Date(currentDate.getTime() - 42 * 24 * 60 * 60 * 1000)
+  
+  return template.weeks.map((week) => ({
+    ...week,
+    unlockAt: calculateUnlockDate(startDate, week.week),
+    isUnlocked: isWeekUnlocked(startDate, week.week, currentDate),
+    courseCode: template.courseCode,
+    courseTitle: template.courseTitle,
+  }))
+}
+
+export function getModuleByWeek(courseTemplateId, weekNumber, courseStartDate = null) {
+  const modules = getCourseModules(courseTemplateId, courseStartDate)
+  return modules.find((m) => m.week === weekNumber) || null
+}
+
+export function getCurrentWeek(courseStartDate) {
+  if (!courseStartDate) return 1
+  const start = new Date(courseStartDate)
+  const now = new Date()
+  const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24))
+  const week = Math.floor(diffDays / 7) + 1
+  return Math.max(1, Math.min(10, week))
 }
 
 // ─── Users ──────────────────────────────────────────────
@@ -120,10 +155,11 @@ export const demoCourses = [
       "Foundational writing course covering news, broadcast, PR, feature, and opinion writing formats. Students master structure, clarity, audience awareness, and basic verification across multiple media platforms.",
     lecturerId: "user-lecturer-1",
     studentCount: 52,
-    assignmentCount: 6,
+    assignmentCount: 10,
     isArchived: false,
     isPublished: true,
     templateId: "HCC109",
+    startDate: "2026-01-20T08:00:00Z", // 7 weeks ago from March 8
     outcomes: [
       "Write a hard news story using inverted pyramid structure with verified facts",
       "Write a press release that meets journalistic standards and passes the journalist test",
@@ -131,14 +167,6 @@ export const demoCourses = [
       "Write a short feature story with a scene-setting lead and nut graf",
       "Write an opinion/editorial piece with a clear thesis and counterargument",
       "Rewrite a print story for interactive/web format demonstrating digital-first thinking",
-    ],
-    assignments: [
-      { id: "hard_news", title: "Hard News Story", week: 4, type: "hard_news" },
-      { id: "press_release", title: "Press Release", week: 6, type: "press_release" },
-      { id: "broadcast_vo", title: "Broadcast Script (VO)", week: 8, type: "broadcast_vo" },
-      { id: "feature_short", title: "Short Feature Story", week: 10, type: "feature_short" },
-      { id: "opinion_editorial", title: "Opinion/Editorial Piece", week: 12, type: "opinion_editorial" },
-      { id: "interactive_web_rewrite", title: "Interactive/Web Rewrite", week: 13, type: "interactive_web_rewrite" },
     ],
   },
   {
@@ -152,10 +180,11 @@ export const demoCourses = [
       "Intermediate reporting course. Students produce beat stories, live updates, interview pieces, broadcast packages, MoJo stories, podcasts, and data mini-stories. Stronger verification gates and multi-source requirements.",
     lecturerId: "user-lecturer-1",
     studentCount: 45,
-    assignmentCount: 7,
+    assignmentCount: 10,
     isArchived: false,
     isPublished: true,
     templateId: "HCC205",
+    startDate: "2026-01-20T08:00:00Z",
     outcomes: [
       "Produce a polished beat story with multiple verified sources and proper attribution",
       "Write and produce a live update sequence (rolling blog or developing story)",
@@ -164,15 +193,6 @@ export const demoCourses = [
       "Produce a MoJo story using mobile-only tools",
       "Script and structure a podcast episode",
       "Produce a data mini-story with transparent methodology and sourced data",
-    ],
-    assignments: [
-      { id: "beat_story", title: "Beat Story", week: 2, type: "beat_story" },
-      { id: "live_update_sequence", title: "Live Update Sequence", week: 4, type: "live_update_sequence" },
-      { id: "interview_piece", title: "Interview-Driven Piece", week: 5, type: "interview_piece" },
-      { id: "broadcast_pkg", title: "Broadcast Package", week: 7, type: "broadcast_pkg" },
-      { id: "mojo_story", title: "MoJo Story", week: 8, type: "mojo_story" },
-      { id: "podcast_script", title: "Podcast Script", week: 10, type: "podcast_script" },
-      { id: "data_mini_story", title: "Data Mini-Story", week: 12, type: "data_mini_story" },
     ],
   },
   {
@@ -186,10 +206,11 @@ export const demoCourses = [
       "Professional writing for public relations and corporate communications. Students produce pitch letters, news releases, backgrounders, fact sheets, newsletters, and web/brochure copy.",
     lecturerId: "user-lecturer-1",
     studentCount: 38,
-    assignmentCount: 6,
+    assignmentCount: 10,
     isArchived: false,
     isPublished: true,
     templateId: "HCC312",
+    startDate: "2026-01-20T08:00:00Z",
     outcomes: [
       "Draft an effective pitch letter targeted to a specific journalist",
       "Write a news-style press release that meets journalistic standards",
@@ -197,14 +218,6 @@ export const demoCourses = [
       "Create a fact sheet with scannable formatting and verifiable data",
       "Write newsletter copy balancing information with engagement",
       "Create brochure or web landing page copy for a target audience",
-    ],
-    assignments: [
-      { id: "pitch_letter", title: "Pitch Letter", week: 2, type: "pitch_letter" },
-      { id: "press_release", title: "News Release", week: 3, type: "press_release" },
-      { id: "backgrounder", title: "Backgrounder Document", week: 4, type: "backgrounder" },
-      { id: "fact_sheet", title: "Fact Sheet", week: 5, type: "fact_sheet" },
-      { id: "newsletter_copy", title: "Newsletter Copy", week: 7, type: "newsletter_copy" },
-      { id: "brochure_web_landing", title: "Brochure/Web Landing Page", week: 8, type: "brochure_web_landing" },
     ],
   },
   {
@@ -222,6 +235,7 @@ export const demoCourses = [
     isArchived: false,
     isPublished: true,
     templateId: "HCC314",
+    startDate: "2026-01-20T08:00:00Z",
     outcomes: [
       "Write a compelling profile using multiple interviews and descriptive detail",
       "Produce a respectful, accurate obituary with verified biographical facts",
@@ -231,18 +245,6 @@ export const demoCourses = [
       "Write business reporting with accessible financial data and jargon translation",
       "Produce polished sports reports with statistics and post-match reactions",
       "Write sensitive disaster/breaking news updates under time pressure",
-    ],
-    assignments: [
-      { id: "profile", title: "Profile Piece", week: 2, type: "profile" },
-      { id: "obituary", title: "Obituary", week: 3, type: "obituary" },
-      { id: "investigative", title: "Investigative Story", week: 5, type: "investigative" },
-      { id: "courts_story", title: "Court Story", week: 6, type: "courts_story" },
-      { id: "parliament_story", title: "Parliament Story", week: 7, type: "parliament_story" },
-      { id: "business_brief", title: "Business Brief", week: 8, type: "business_brief" },
-      { id: "sports_report", title: "Sports Report", week: 9, type: "sports_report" },
-      { id: "disaster_update", title: "Disaster Update", week: 10, type: "disaster_update" },
-      { id: "press_conference", title: "Press Conference Report", week: 11, type: "press_conference" },
-      { id: "newspaper_analysis", title: "Newspaper Analysis", week: 13, type: "newspaper_analysis" },
     ],
   },
   {
@@ -256,10 +258,11 @@ export const demoCourses = [
       "Advanced feature writing, editing, and magazine production. Feature studio with scene-builder prompts, edit-a-feature exercises, layout companion, and magazine production workflow.",
     lecturerId: "user-lecturer-1",
     studentCount: 32,
-    assignmentCount: 4,
+    assignmentCount: 10,
     isArchived: false,
     isPublished: true,
     templateId: "HCC316",
+    startDate: "2026-01-20T08:00:00Z",
     outcomes: [
       "Write long-form features with narrative structure, scene-setting, and nut graf",
       "Use scene-builder prompts to create vivid, immersive openings",
@@ -267,12 +270,6 @@ export const demoCourses = [
       "Edit another writer's feature draft and produce a professional edit memo",
       "Understand magazine layout principles and visual storytelling",
       "Write effective captions, pull quotes, and display copy",
-    ],
-    assignments: [
-      { id: "feature_story", title: "Feature Story", week: 3, type: "feature_story" },
-      { id: "feature_edit_exercise", title: "Edit-a-Feature Exercise", week: 7, type: "feature_edit_exercise" },
-      { id: "layout_visual", title: "Layout/Visual Assignment", week: 10, type: "layout_visual" },
-      { id: "feature_story_2", title: "Second Feature/Profile", week: 12, type: "feature_story" },
     ],
   },
   {
@@ -286,10 +283,11 @@ export const demoCourses = [
       "Advanced opinion journalism. Editorials, reviews (film, book, event, product, music, restaurant), editorial analysis. Features editorial mode, review mode, language tools, and opinion/fact labelling.",
     lecturerId: "user-lecturer-1",
     studentCount: 28,
-    assignmentCount: 6,
+    assignmentCount: 10,
     isArchived: false,
     isPublished: true,
     templateId: "HCC420",
+    startDate: "2026-01-20T08:00:00Z",
     outcomes: [
       "Write persuasive editorials with clear thesis, evidence, and steelmanned counterargument",
       "Produce informed film/book reviews with criteria-based evaluation",
@@ -297,14 +295,6 @@ export const demoCourses = [
       "Produce music or restaurant reviews demonstrating specialised review skills",
       "Craft effective headlines and captions that are accurate and compelling",
       "Conduct editorial analysis applying agenda-setting, gatekeeping, and framing theory",
-    ],
-    assignments: [
-      { id: "editorial", title: "Editorial", week: 3, type: "editorial" },
-      { id: "review_film_book", title: "Film/Book Review", week: 6, type: "review_film_book" },
-      { id: "review_event_product", title: "Event/Product Review", week: 7, type: "review_event_product" },
-      { id: "review_music_restaurant", title: "Music/Restaurant Review", week: 8, type: "review_music_restaurant" },
-      { id: "headline_caption_drill", title: "Headline & Caption Drills", week: 9, type: "headline_caption_drill" },
-      { id: "editorial_analysis", title: "Editorial Analysis", week: 12, type: "editorial_analysis" },
     ],
   },
 ]

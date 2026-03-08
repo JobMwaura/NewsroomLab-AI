@@ -1,12 +1,12 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useState, useMemo } from "react"
 import Link from "next/link"
 import {
   BookOpen, ClipboardList, Users, Calendar, ChevronRight, ArrowLeft,
   CheckCircle2, Clock, FileText, Shield, Brain, Eye, GraduationCap,
   AlertTriangle, Lock, Unlock, BadgeCheck, BarChart2, Layers,
-  Download, Settings, Table2,
+  Download, Settings, Table2, Play, ScrollText, Pencil, Video,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -18,7 +18,7 @@ import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { demoCourses, demoAssignments, demoUsers } from "@/lib/demo-data"
+import { demoCourses, demoAssignments, demoUsers, getCourseModules, getCurrentWeek } from "@/lib/demo-data"
 import { getCourseTemplate } from "@/lib/templates/course-templates"
 import { getStoryTemplate } from "@/lib/templates/story-templates"
 import { getRubricPreset } from "@/lib/templates/rubric-presets"
@@ -273,7 +273,7 @@ export default function CourseDetailPage({ params }) {
   const { id } = use(params)
   const { user } = useAuth()
   const isLecturer = user?.role === "LECTURER" || user?.role === "ADMIN"
-  const [activeTab, setActiveTab] = useState("assignments")
+  const [activeTab, setActiveTab] = useState("modules")
   const [openTemplateId, setOpenTemplateId] = useState(null)
   const [isDownloading, setIsDownloading] = useState(false)
   
@@ -316,6 +316,11 @@ export default function CourseDetailPage({ params }) {
   // Rubric
   const rubricId = template?.defaultRubricId
   const rubric = rubricId ? getRubricPreset(rubricId) : null
+
+  // 10-Week Modules with drip release
+  const courseStartDate = course?.startDate || null
+  const courseModules = useMemo(() => getCourseModules(templateCode, courseStartDate), [templateCode, courseStartDate])
+  const currentWeek = useMemo(() => getCurrentWeek(courseStartDate), [courseStartDate])
 
   // Gate preset
   const gateRules = template?.gatePreset ? getGatePresetRules(template.gatePreset) : {}
@@ -414,8 +419,8 @@ export default function CourseDetailPage({ params }) {
         {/* Stats row */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: "Assignments", value: assignmentTemplates.length, icon: ClipboardList },
-            { label: "Weeks", value: template?.weeklyPlan?.length || 14, icon: Calendar },
+            { label: "Modules", value: courseModules.length || 10, icon: BookOpen },
+            { label: "Assignments", value: courseModules.length || 10, icon: ClipboardList },
             { label: "Learning Outcomes", value: template?.outcomes?.length || 0, icon: BadgeCheck },
             { label: "Rubric Categories", value: rubric?.categories?.length || 0, icon: BarChart2 },
           ].map(({ label, value, icon: Icon }) => (
@@ -438,8 +443,8 @@ export default function CourseDetailPage({ params }) {
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="flex-wrap">
-            <TabsTrigger value="assignments">📋 Assignments</TabsTrigger>
-            <TabsTrigger value="weekly">📅 Weekly Plan</TabsTrigger>
+            <TabsTrigger value="modules">� Modules (10 Weeks)</TabsTrigger>
+            <TabsTrigger value="assignments">� Assignments</TabsTrigger>
             <TabsTrigger value="outcomes">🎯 Outcomes</TabsTrigger>
             <TabsTrigger value="rubric">📊 Rubric</TabsTrigger>
             <TabsTrigger value="gates">🔒 Gates</TabsTrigger>
@@ -477,35 +482,174 @@ export default function CourseDetailPage({ params }) {
             )}
           </TabsContent>
 
-          {/* ── Weekly Plan Tab ───────────────────────── */}
-          <TabsContent value="weekly" className="space-y-4">
-            <h2 className="text-lg font-semibold">14-Week Plan</h2>
-            {template?.weeklyPlan?.length > 0 ? (
-              <div className="space-y-3">
-                {template.weeklyPlan.map((week) => (
-                  <div key={week.week} className="rounded-xl border p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="shrink-0 w-8 h-8 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-sm font-bold text-zinc-600 dark:text-zinc-300">
-                        {week.week}
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-sm">{week.topic}</h3>
-                        <ul className="mt-1.5 space-y-1">
-                          {week.activities.map((a, i) => (
-                            <li key={i} className="text-xs text-muted-foreground flex items-start gap-1.5">
-                              <span className="mt-0.5 text-zinc-300 dark:text-zinc-600">•</span>
-                              {a}
-                            </li>
-                          ))}
-                        </ul>
+          {/* ── Modules Tab (10-Week Drip Release) ────────── */}
+          <TabsContent value="modules" className="space-y-6">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                  <BookOpen className="h-5 w-5" />
+                  Course Modules
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  10 weekly modules with video lectures, notes, and assignments.
+                  {!isLecturer && currentWeek <= 10 && (
+                    <span className="ml-2 text-blue-600 dark:text-blue-400 font-medium">
+                      Currently in Week {currentWeek}
+                    </span>
+                  )}
+                </p>
+              </div>
+              {isLecturer && (
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Calendar className="h-4 w-4" />
+                  Drip release: New module unlocks each Monday
+                </div>
+              )}
+            </div>
+
+            {/* Progress indicator */}
+            {!isLecturer && (
+              <div className="rounded-xl border p-4 bg-gradient-to-r from-zinc-50 to-zinc-100 dark:from-zinc-900 dark:to-zinc-800">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium">Your Progress</span>
+                  <span className="text-sm text-muted-foreground">
+                    {Math.min(currentWeek, 10)} of 10 weeks available
+                  </span>
+                </div>
+                <Progress value={(Math.min(currentWeek, 10) / 10) * 100} className="h-2" />
+              </div>
+            )}
+
+            {/* Modules list */}
+            <div className="space-y-4">
+              {courseModules.map((module) => {
+                const isLocked = !module.isUnlocked && !isLecturer
+                const isCurrent = module.week === currentWeek && !isLecturer
+                
+                return (
+                  <div 
+                    key={module.week} 
+                    className={`rounded-xl border transition-all ${
+                      isLocked 
+                        ? "opacity-60 bg-zinc-50 dark:bg-zinc-900" 
+                        : isCurrent
+                          ? "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 shadow-sm"
+                          : "hover:border-zinc-300 dark:hover:border-zinc-600"
+                    }`}
+                  >
+                    <div className="p-4">
+                      <div className="flex items-start gap-4">
+                        {/* Week number badge */}
+                        <div className={`shrink-0 w-12 h-12 rounded-xl flex flex-col items-center justify-center ${
+                          isLocked 
+                            ? "bg-zinc-200 dark:bg-zinc-700 text-zinc-500" 
+                            : isCurrent
+                              ? "bg-blue-600 text-white"
+                              : module.isUnlocked
+                                ? "bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-400"
+                                : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600"
+                        }`}>
+                          <span className="text-xs uppercase tracking-wide font-medium">Week</span>
+                          <span className="text-xl font-bold leading-none">{module.week}</span>
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div>
+                              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                {isLocked ? (
+                                  <Badge variant="outline" className="text-xs gap-1 border-zinc-300 dark:border-zinc-600 text-zinc-500">
+                                    <Lock className="h-3 w-3" />
+                                    Locked
+                                  </Badge>
+                                ) : isCurrent ? (
+                                  <Badge className="text-xs gap-1 bg-blue-600">
+                                    <Play className="h-3 w-3" />
+                                    Current Week
+                                  </Badge>
+                                ) : module.isUnlocked ? (
+                                  <Badge variant="outline" className="text-xs gap-1 border-green-300 dark:border-green-700 text-green-700 dark:text-green-400">
+                                    <Unlock className="h-3 w-3" />
+                                    Available
+                                  </Badge>
+                                ) : null}
+                                {isLecturer && !module.isUnlocked && (
+                                  <Badge variant="outline" className="text-xs gap-1">
+                                    <Clock className="h-3 w-3" />
+                                    Unlocks {new Date(module.unlockAt).toLocaleDateString("en-GB", { 
+                                      month: "short", 
+                                      day: "numeric" 
+                                    })}
+                                  </Badge>
+                                )}
+                              </div>
+                              <h3 className={`font-semibold ${isLocked ? "text-zinc-500" : ""}`}>
+                                {module.title}
+                              </h3>
+                              <p className={`text-sm mt-0.5 line-clamp-2 ${
+                                isLocked ? "text-zinc-400 dark:text-zinc-500" : "text-muted-foreground"
+                              }`}>
+                                {module.overview}
+                              </p>
+                            </div>
+                            
+                            {/* Action button */}
+                            {!isLocked && (
+                              <Button 
+                                variant={isCurrent ? "default" : "outline"} 
+                                size="sm" 
+                                className="shrink-0 gap-1"
+                                asChild
+                              >
+                                <Link href={`/dashboard/courses/${id}/week/${module.week}`}>
+                                  {isCurrent ? "Continue" : "View"} <ChevronRight className="h-3 w-3" />
+                                </Link>
+                              </Button>
+                            )}
+                          </div>
+
+                          {/* Module contents preview */}
+                          {!isLocked && (
+                            <div className="flex items-center gap-4 mt-3 flex-wrap">
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <Video className="h-3.5 w-3.5" />
+                                <span>Video lecture</span>
+                              </div>
+                              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                <ScrollText className="h-3.5 w-3.5" />
+                                <span>Notes</span>
+                              </div>
+                              {module.assignment && (
+                                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  <span>{module.assignment.title}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Locked state - shows unlock date for students */}
+                          {isLocked && (
+                            <div className="flex items-center gap-2 mt-3 text-xs text-zinc-500 dark:text-zinc-400">
+                              <Clock className="h-3.5 w-3.5" />
+                              <span>
+                                Unlocks on {new Date(module.unlockAt).toLocaleDateString("en-GB", { 
+                                  weekday: "long",
+                                  month: "long", 
+                                  day: "numeric",
+                                  year: "numeric"
+                                })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-muted-foreground text-sm">Weekly plan not available for this course.</p>
-            )}
+                )
+              })}
+            </div>
           </TabsContent>
 
           {/* ── Learning Outcomes Tab ─────────────────── */}
