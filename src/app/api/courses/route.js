@@ -86,6 +86,7 @@ export async function POST(request) {
         isPublished: false,
         isArchived: false,
         lecturerId,
+        startDate: new Date("2026-01-20T08:00:00Z"), // Default start date
       },
     })
 

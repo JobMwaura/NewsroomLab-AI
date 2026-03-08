@@ -557,7 +557,17 @@ export default function CourseDetailPage({ params }) {
 
             {/* Modules list */}
             <div className="space-y-4">
-              {courseModules.map((module) => {
+              {courseModules.length === 0 ? (
+                <div className="text-center py-12 border rounded-xl bg-zinc-50 dark:bg-zinc-900">
+                  <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="font-semibold mb-2">No Modules Available</h3>
+                  <p className="text-sm text-muted-foreground max-w-md mx-auto">
+                    {isLecturer 
+                      ? "This course template doesn't have weekly modules configured yet. Make sure the course has a valid template ID (HCC109, HCC205, HCC312, HCC314, HCC316, or HCC420)."
+                      : "Course modules are not yet available. Please check back later or contact your lecturer."}
+                  </p>
+                </div>
+              ) : courseModules.map((module) => {
                 const isLocked = !module.isUnlocked && !isLecturer
                 const isCurrent = module.week === currentWeek && !isLecturer
                 
@@ -683,16 +693,17 @@ export default function CourseDetailPage({ params }) {
                     </div>
                   </div>
                 )
-              })}
+              })
+            }
             </div>
           </TabsContent>
 
           {/* ── Learning Outcomes Tab ─────────────────── */}
           <TabsContent value="outcomes" className="space-y-4">
             <h2 className="text-lg font-semibold">Learning Outcomes</h2>
-            {template?.outcomes?.length > 0 ? (
+            {(course?.outcomes?.length > 0 || template?.outcomes?.length > 0) ? (
               <div className="space-y-2">
-                {template.outcomes.map((outcome, i) => (
+                {(course?.outcomes || template?.outcomes || []).map((outcome, i) => (
                   <div key={i} className="flex items-start gap-3 rounded-lg border p-3">
                     <div className="shrink-0 w-6 h-6 rounded-full bg-green-100 dark:bg-green-950 flex items-center justify-center">
                       <CheckCircle2 className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
