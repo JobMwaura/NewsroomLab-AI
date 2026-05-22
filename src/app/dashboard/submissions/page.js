@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Search, Filter, ArrowUpDown, Eye, CheckCircle2 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,8 +28,21 @@ import { SUBMISSION_STATUS_LABELS, SUBMISSION_STATUS_COLORS } from "@/lib/types"
 export default function SubmissionsPage() {
   const [filterStatus, setFilterStatus] = useState("all")
   const [searchQuery, setSearchQuery] = useState("")
+  const [allSubmissions, setAllSubmissions] = useState(demoSubmissions)
 
-  const filteredSubmissions = demoSubmissions.filter((sub) => {
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("newsroomlab_submissions") || "[]")
+      if (stored.length > 0) {
+        // Merge: real submissions first, then demo data for any not already present
+        const realIds = new Set(stored.map(s => s.id))
+        const combined = [...stored, ...demoSubmissions.filter(s => !realIds.has(s.id))]
+        setAllSubmissions(combined)
+      }
+    } catch (_) {}
+  }, [])
+
+  const filteredSubmissions = allSubmissions.filter((sub) => {
     const matchesStatus = filterStatus === "all" || sub.status === filterStatus
     const matchesSearch =
       !searchQuery ||
@@ -78,10 +91,10 @@ export default function SubmissionsPage() {
       {/* Summary Stats */}
       <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
         {[
-          { label: "Total", count: demoSubmissions.length, color: "" },
-          { label: "Needs Grading", count: demoSubmissions.filter((s) => s.status === "SUBMITTED_FINAL").length, color: "text-amber-600" },
-          { label: "AI Reviewed", count: demoSubmissions.filter((s) => s.status === "AI_REVIEWED").length, color: "text-purple-600" },
-          { label: "Graded", count: demoSubmissions.filter((s) => s.status === "GRADED").length, color: "text-green-600" },
+          { label: "Total", count: allSubmissions.length, color: "" },
+          { label: "Needs Grading", count: allSubmissions.filter((s) => s.status === "SUBMITTED_FINAL").length, color: "text-amber-600" },
+          { label: "AI Reviewed", count: allSubmissions.filter((s) => s.status === "AI_REVIEWED").length, color: "text-purple-600" },
+          { label: "Graded", count: allSubmissions.filter((s) => s.status === "GRADED").length, color: "text-green-600" },
         ].map((stat) => (
           <Card key={stat.label}>
             <CardContent className="p-4">

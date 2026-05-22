@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
 import { demoAssignments, demoFactCheckerReview, demoEthicsReview, demoFramingReview } from "@/lib/demo-data"
+import { useAuth } from "@/components/providers/auth-provider"
 import { STORY_TYPE_LABELS } from "@/lib/types"
 import { getMicroLesson } from "@/lib/templates/micro-lessons"
 import { getReflectionPromptSet } from "@/lib/templates/reflection-prompts"
@@ -338,6 +339,7 @@ const workflowSteps = [
 
 function EditorInner() {
   const searchParams = useSearchParams()
+  const { user } = useAuth()
   const templateParam = searchParams.get("template")
   const editParam = searchParams.get("edit") // ID of submission being edited
   const storyTemplate = templateParam ? getStoryTemplate(templateParam) : null
@@ -1473,7 +1475,38 @@ function EditorInner() {
                         }
                         
                         localStorage.setItem("newsroomlab_portfolio", JSON.stringify(existingSubmissions))
-                        
+
+                        // Also save to lecturer-visible submissions store
+                        const lecturerSubmission = {
+                          id: submission.id,
+                          studentName: user?.name || "Student",
+                          studentId: user?.id || "user-student-1",
+                          studentEmail: user?.email || "student@university.ac.ke",
+                          assignmentId: submission.assignmentId,
+                          assignmentTitle: submission.title,
+                          courseCode: submission.course,
+                          wordCount: (submission.draftContent || "").split(/\s+/).filter(w => w.length > 0).length,
+                          currentVersion: isEditMode ? 2 : 1,
+                          status: "SUBMITTED_FINAL",
+                          overallScore: undefined,
+                          verificationItemCount: submission.verifications || 0,
+                          submittedAt: submission.submittedAt,
+                          content: submission.draftContent,
+                          headline: submission.headline,
+                          verificationTable: submission.verificationTable,
+                          reflectionAnswers: submission.reflectionAnswers,
+                          aiDisclosure: submission.aiDisclosure,
+                          templateId: submission.templateId,
+                        }
+                        const allSubs = JSON.parse(localStorage.getItem("newsroomlab_submissions") || "[]")
+                        const existingSubIdx = allSubs.findIndex(s => s.id === lecturerSubmission.id)
+                        if (existingSubIdx >= 0) {
+                          allSubs[existingSubIdx] = lecturerSubmission
+                        } else {
+                          allSubs.push(lecturerSubmission)
+                        }
+                        localStorage.setItem("newsroomlab_submissions", JSON.stringify(allSubs))
+
                         // Clear the draft from localStorage
                         const savedKey = `${STORAGE_KEY}_${templateParam || "default"}`
                         localStorage.removeItem(savedKey)

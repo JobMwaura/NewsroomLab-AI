@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useState, useEffect } from "react"
 import Link from "next/link"
 import {
   CheckCircle2,
@@ -48,15 +48,40 @@ function SliderComponent({ value, onChange, max }) {
 export default function GradingDetailPage({ params }) {
   const { id } = use(params)
   
-  // Find the submission by ID
-  const submission = demoSubmissions.find((s) => s.id === id)
+  // Find the submission by ID — check demo data first, then localStorage real submissions
+  const demoSubmission = demoSubmissions.find((s) => s.id === id)
+  const [submission, setSubmission] = useState(demoSubmission || null)
+  const [loaded, setLoaded] = useState(!!demoSubmission)
+  
+  useEffect(() => {
+    if (!demoSubmission) {
+      try {
+        const stored = JSON.parse(localStorage.getItem("newsroomlab_submissions") || "[]")
+        const found = stored.find(s => s.id === id)
+        if (found) setSubmission(found)
+      } catch (_) {}
+      setLoaded(true)
+    }
+  }, [id, demoSubmission])
   
   const [scores, setScores] = useState(
-    Object.fromEntries(defaultHardNewsRubric.map((cat) => [cat.key, submission?.overallScore ? Math.round(cat.maxPoints * (submission.overallScore / 100)) : 0]))
+    Object.fromEntries(defaultHardNewsRubric.map((cat) => [cat.key, 0]))
   )
   const [comments, setComments] = useState("")
   const [privateNotes, setPrivateNotes] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Update scores once submission loads (handles both demo and localStorage submissions)
+  useEffect(() => {
+    if (submission?.overallScore) {
+      setScores(Object.fromEntries(
+        defaultHardNewsRubric.map((cat) => [cat.key, Math.round(cat.maxPoints * (submission.overallScore / 100))])
+      ))
+    }
+  }, [submission])
+
+  // While loading from localStorage, show nothing (avoids flash of "not found")
+  if (!loaded) return null
 
   // Handle submission not found
   if (!submission) {
@@ -79,6 +104,15 @@ export default function GradingDetailPage({ params }) {
   const handleSubmitGrade = () => {
     setIsSubmitting(true)
     setTimeout(() => {
+      // Persist grade to localStorage submissions store
+      try {
+        const stored = JSON.parse(localStorage.getItem("newsroomlab_submissions") || "[]")
+        const idx = stored.findIndex(s => s.id === id)
+        if (idx >= 0) {
+          stored[idx] = { ...stored[idx], overallScore: percentage, status: "GRADED", gradedAt: new Date().toISOString(), comments }
+          localStorage.setItem("newsroomlab_submissions", JSON.stringify(stored))
+        }
+      } catch (_) {}
       toast.success(`Grade submitted: ${percentage}%`)
       setIsSubmitting(false)
     }, 1000)
@@ -227,22 +261,40 @@ export default function GradingDetailPage({ params }) {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {Array.from({ length: submission.verificationItemCount || 3 }).map((_, i) => (
-                      <div key={i} className="p-3 rounded-lg border bg-zinc-50/50 dark:bg-zinc-900/50">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1">
-                            <p className="text-sm font-medium">Claim {i + 1}</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Demo verification item - actual claims and evidence would be shown here.
-                            </p>
+                    {submission.verificationTable && submission.verificationTable.length > 0 ? (
+                      submission.verificationTable.map((item, i) => (
+                        <div key={item.id || i} className="p-3 rounded-lg border bg-zinc-50/50 dark:bg-zinc-900/50">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">Claim {i + 1}: {item.claim || "—"}</p>
+                              {item.evidence && <p className="text-xs text-muted-foreground mt-1">Evidence: {item.evidence}</p>}
+                              {item.sourceRef && <p className="text-xs text-muted-foreground">Source: {item.sourceRef}</p>}
+                            </div>
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300 shrink-0">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              {item.confidence || "Medium"}
+                            </Badge>
                           </div>
-                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
-                            <CheckCircle2 className="h-3 w-3 mr-1" />
-                            High
-                          </Badge>
                         </div>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      Array.from({ length: submission.verificationItemCount || 3 }).map((_, i) => (
+                        <div key={i} className="p-3 rounded-lg border bg-zinc-50/50 dark:bg-zinc-900/50">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">Claim {i + 1}</p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Demo verification item.
+                              </p>
+                            </div>
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              High
+                            </Badge>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -286,11 +338,20 @@ export default function GradingDetailPage({ params }) {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
-                    <p className="text-muted-foreground italic">
-                      Student reflection on the writing process, challenges faced, and lessons learned 
-                      would be displayed here.
-                    </p>
+                  <div className="space-y-4">
+                    {submission.reflectionAnswers && Object.keys(submission.reflectionAnswers).length > 0 ? (
+                      Object.entries(submission.reflectionAnswers).map(([key, answer], i) => (
+                        <div key={key} className="space-y-1">
+                          <p className="text-sm font-medium text-muted-foreground">Question {i + 1}</p>
+                          <p className="text-sm">{answer || <span className="italic text-muted-foreground">No answer provided</span>}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-muted-foreground italic text-sm">
+                        Student reflection on the writing process, challenges faced, and lessons learned 
+                        would be displayed here.
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
