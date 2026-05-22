@@ -1,12 +1,25 @@
 // ─── Prisma Client Singleton ────────────────────────
-// Prevents multiple instances in development (hot reload).
-// Prisma 7 — connection URL is configured in prisma.config.js
+// Prisma 7 requires a driver adapter (e.g. @prisma/adapter-pg).
+// In demo/build mode without a configured adapter the constructor throws;
+// we catch that and export null so the build succeeds and API routes
+// return 500 → frontend falls back to demo data.
 import { PrismaClient } from "@prisma/client"
 
 const globalForPrisma = globalThis
 
-export const prisma = globalForPrisma.prisma ?? new PrismaClient({
-  log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-})
+function makePrisma() {
+  try {
+    return new PrismaClient({
+      log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    })
+  } catch (e) {
+    console.warn("[prisma] Client unavailable (Prisma 7 needs a driver adapter):", e.message)
+    return null
+  }
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
+export const prisma = globalForPrisma.prisma ?? makePrisma()
+
+if (process.env.NODE_ENV !== "production" && prisma) {
+  globalForPrisma.prisma = prisma
+}

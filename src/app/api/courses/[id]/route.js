@@ -1,7 +1,7 @@
 // ─── Single Course API ───────────────────────────────
 // GET: Fetch a single course
 // PATCH: Update course (publish/unpublish, archive)
-
+export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 

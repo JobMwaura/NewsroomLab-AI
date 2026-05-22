@@ -1,7 +1,7 @@
 // ─── Courses API ─────────────────────────────────────
 // GET: Fetch all courses from database
 // POST: Create a new course from template
-
+export const dynamic = "force-dynamic"
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 

@@ -12,6 +12,8 @@
 //   • right of reply (if required)
 //   • custom flags (proof pack, photo permissions, etc.)
 
+export const dynamic = "force-dynamic"
+
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { canFinalSubmit, getGatePresetRules } from "@/lib/verification-gate"
