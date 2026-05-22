@@ -2,12 +2,12 @@
 // PostgreSQL via Supabase
 
 generator client {
-  provider        = "prisma-client-js"
-  engineType      = "library"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ─── ENUMS ───────────────────────────────────────────────
@@ -32,7 +32,6 @@ enum EnrollmentStatus {
 
 enum StoryType {
   HARD_NEWS
-  FOLLOW_UP
   FEATURE
   PROFILE
   OBITUARY
@@ -44,14 +43,6 @@ enum StoryType {
   SPORTS
   DISASTER
   ONLINE_UPDATE
-  BROADCAST_VO
-  BROADCAST_PKG
-  PODCAST
-  MOJO
-  DATA_STORY
-  LIVE_BLOG
-  EDITORIAL
-  REVIEW
 }
 
 enum SubmissionStatus {
@@ -119,26 +110,19 @@ model Course {
   id          String   @id @default(cuid())
   title       String
   code        String?
-  series      String?  // Course level: 100, 200, 300, 400
   institution String?
   semester    String
   description String?
-  outcomes    Json     @default("[]")  // Learning outcomes array
   timezone    String   @default("Africa/Nairobi")
   lecturerId  String   @map("lecturer_id")
-  templateId  String?  @map("template_id")  // Reference to course template
   isArchived  Boolean  @default(false) @map("is_archived")
-  isPublished Boolean  @default(false) @map("is_published")  // Visible to students
-  startDate   DateTime? @map("start_date")  // Course start date for drip release
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  lecturer      User                 @relation("CourseLecturer", fields: [lecturerId], references: [id])
-  enrollments   CourseEnrollment[]
-  assignments   Assignment[]
-  rubrics       Rubric[]
-  gradingConfig CourseGradingConfig?
-  modules       CourseModule[]
+  lecturer    User               @relation("CourseLecturer", fields: [lecturerId], references: [id])
+  enrollments CourseEnrollment[]
+  assignments Assignment[]
+  rubrics     Rubric[]
 
   @@map("courses")
 }
@@ -176,8 +160,6 @@ model Rubric {
 model Assignment {
   id                 String    @id @default(cuid())
   courseId           String    @map("course_id")
-  moduleId           String?   @map("module_id")  // Link to course module/week
-  weekNumber         Int?      @map("week_number")  // Which week this assignment is in
   title              String
   storyType          StoryType @map("story_type")
   brief              String
@@ -185,21 +167,16 @@ model Assignment {
   constraints        Json
   dueAt              DateTime  @map("due_at")
   requiredComponents Json      @map("required_components")
-  requiredSections   Json      @default("[]") @map("required_sections")
   rubricId           String?   @map("rubric_id")
   aiModules          Json      @map("ai_modules")
   verificationRules  Json      @map("verification_rules")
-  templateId         String?   @map("template_id")
-  microLessonIds     Json      @default("[]") @map("micro_lesson_ids")
-  reflectionSetId    String?   @map("reflection_set_id")
   isPublished        Boolean   @default(false) @map("is_published")
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  course        Course                   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  rubric        Rubric?                  @relation(fields: [rubricId], references: [id])
-  submissions   Submission[]
-  gradingConfig AssignmentGradingConfig?
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  rubric      Rubric?      @relation(fields: [rubricId], references: [id])
+  submissions Submission[]
 
   @@map("assignments")
 }
@@ -272,7 +249,6 @@ model VerificationItem {
   sourceType              SourceType @map("source_type")
   sourceRef               String     @map("source_ref")
   confidence              Confidence @default(MEDIUM)
-  riskLevel               RiskLevel  @default(LOW) @map("risk_level")
   needsSecondConfirmation Boolean    @default(false) @map("needs_second_confirmation")
   secondSourceRef         String?    @map("second_source_ref")
   notes                   String?
@@ -382,165 +358,4 @@ model AuditLog {
   user User? @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
-}
-
-// ─── GRADING & MARKSHEET MODELS ─────────────────────────
-
-enum AgreedMarkRule {
-  MANUAL
-  AVERAGE_IE_EE
-  MODERATED_IE_EE
-}
-
-model CourseGradingConfig {
-  id               String         @id @default(cuid())
-  courseId         String         @unique @map("course_id")
-  caWeight         Int            @default(30) @map("ca_weight")
-  examWeight       Int            @default(70) @map("exam_weight")
-  gradeScale       Json           @default("[{\"grade\":\"A\",\"min\":75,\"max\":100},{\"grade\":\"B\",\"min\":65,\"max\":74},{\"grade\":\"C\",\"min\":50,\"max\":64},{\"grade\":\"D\",\"min\":40,\"max\":49},{\"grade\":\"E\",\"min\":0,\"max\":39}]") @map("grade_scale")
-  agreedMarkRule   AgreedMarkRule @default(AVERAGE_IE_EE) @map("agreed_mark_rule")
-  createdAt        DateTime       @default(now()) @map("created_at")
-  updatedAt        DateTime       @updatedAt @map("updated_at")
-
-  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
-
-  @@map("course_grading_configs")
-}
-
-model AssignmentGradingConfig {
-  id             String   @id @default(cuid())
-  assignmentId   String   @unique @map("assignment_id")
-  maxMarks       Int      @default(10) @map("max_marks")
-  countsTowardCa Boolean  @default(true) @map("counts_toward_ca")
-  caSlot         Int?     @map("ca_slot")
-  weightWithinCa Float?   @map("weight_within_ca")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
-
-  assignment Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
-
-  @@map("assignment_grading_configs")
-}
-
-model ExamScore {
-  id          String   @id @default(cuid())
-  courseId    String   @map("course_id")
-  studentId   String   @map("student_id")
-  examScore70 Float    @map("exam_score_70")
-  enteredBy   String   @map("entered_by")
-  enteredAt   DateTime @default(now()) @map("entered_at")
-
-  @@unique([courseId, studentId])
-  @@map("exam_scores")
-}
-
-model FinalMark {
-  id            String   @id @default(cuid())
-  courseId      String   @map("course_id")
-  studentId     String   @map("student_id")
-  caTotal30     Float?   @map("ca_total_30")
-  examScore70   Float?   @map("exam_score_70")
-  ieTotal100    Float?   @map("ie_total_100")
-  eeMark100     Float?   @map("ee_mark_100")
-  agreedMark100 Float?   @map("agreed_mark_100")
-  finalGrade    String?  @map("final_grade")
-  enteredBy     String   @map("entered_by")
-  enteredAt     DateTime @default(now()) @map("entered_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  @@unique([courseId, studentId])
-  @@map("final_marks")
-}
-
-// ─── COURSE MODULES & WEEKLY CONTENT ────────────────────
-
-enum ModuleItemType {
-  VIDEO
-  NOTES
-  ASSIGNMENT
-  LINK
-  DOWNLOAD
-  CHECKLIST
-}
-
-enum ReleaseMode {
-  SCHEDULED
-  MANUAL
-}
-
-model CourseModule {
-  id           String      @id @default(cuid())
-  courseId     String      @map("course_id")
-  weekNumber   Int         @map("week_number")
-  title        String
-  overview     String?
-  unlockAt     DateTime?   @map("unlock_at")
-  isPublished  Boolean     @default(false) @map("is_published")
-  releaseMode  ReleaseMode @default(SCHEDULED) @map("release_mode")
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-
-  course Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  items  ModuleItem[]
-
-  @@unique([courseId, weekNumber])
-  @@map("course_modules")
-}
-
-model ModuleItem {
-  id           String         @id @default(cuid())
-  moduleId     String         @map("module_id")
-  type         ModuleItemType
-  title        String
-  description  String?
-  orderIndex   Int            @default(0) @map("order_index")
-  videoId      String?        @map("video_id")
-  assignmentId String?        @map("assignment_id")
-  contentHtml  String?        @map("content_html")
-  resourceUrl  String?        @map("resource_url")
-  isRequired   Boolean        @default(false) @map("is_required")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
-
-  module CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  video  Video?       @relation(fields: [videoId], references: [id])
-
-  @@map("module_items")
-}
-
-model Video {
-  id          String   @id @default(cuid())
-  courseId    String   @map("course_id")
-  moduleId    String?  @map("module_id")
-  uploaderId  String   @map("uploader_id")
-  title       String
-  description String?
-  storagePath String   @map("storage_path")
-  durationSec Int?     @map("duration_sec")
-  thumbnailUrl String? @map("thumbnail_url")
-  isProcessed Boolean  @default(false) @map("is_processed")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  moduleItems ModuleItem[]
-
-  @@map("videos")
-}
-
-// ─── STUDENT MODULE PROGRESS ────────────────────────────
-
-model StudentModuleProgress {
-  id           String    @id @default(cuid())
-  studentId    String    @map("student_id")
-  moduleId     String    @map("module_id")
-  courseId     String    @map("course_id")
-  startedAt    DateTime? @map("started_at")
-  completedAt  DateTime? @map("completed_at")
-  videoWatched Boolean   @default(false) @map("video_watched")
-  notesRead    Boolean   @default(false) @map("notes_read")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-
-  @@unique([studentId, moduleId])
-  @@map("student_module_progress")
 }

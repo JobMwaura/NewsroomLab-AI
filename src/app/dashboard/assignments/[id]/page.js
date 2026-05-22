@@ -1,6 +1,6 @@
 "use client"
 
-import { use } from "react"
+import { use, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -30,11 +30,22 @@ import { useAuth } from "@/components/providers/auth-provider"
 import { demoAssignments, demoSubmissions } from "@/lib/demo-data"
 import { STORY_TYPE_LABELS } from "@/lib/types"
 
+const EDITOR_STORAGE_KEY = "newsroomlab_editor_draft"
+
 export default function AssignmentDetailPage({ params }) {
   const { id } = use(params)
   const router = useRouter()
   const { user } = useAuth()
   const isLecturer = user?.role === "LECTURER" || user?.role === "ADMIN"
+
+  // Read live editor progress from localStorage
+  const [localDraft, setLocalDraft] = useState(null)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`${EDITOR_STORAGE_KEY}_${id}`)
+      if (saved) setLocalDraft(JSON.parse(saved))
+    } catch (_) {}
+  }, [id])
 
   // Find the assignment
   const assignment = demoAssignments.find((a) => a.id === id)
@@ -57,11 +68,24 @@ export default function AssignmentDetailPage({ params }) {
     )
   }
 
-  // Check if student has a submission for this assignment
+  // Check if student has a submission: prefer live localStorage data, fall back to demo
+  const demoSub = !isLecturer
+    ? demoSubmissions.find((s) => s.assignmentId === assignment.id && s.studentId === user?.id)
+    : null
+
+  // Merge localStorage draft stats on top of demo submission
   const studentSubmission = !isLecturer
-    ? demoSubmissions.find(
-        (s) => s.assignmentId === assignment.id && s.studentId === user?.id
-      )
+    ? localDraft
+      ? {
+          ...demoSub,
+          wordCount: localDraft.draftContent
+            ? localDraft.draftContent.split(/\s+/).filter((w) => w.length > 0).length
+            : (demoSub?.wordCount || 0),
+          verificationItems: localDraft.verificationItems || [],
+          currentStep: Object.values(localDraft.completionStatus || {}).filter(Boolean).length,
+          lastSavedAt: localDraft.lastSaved || null,
+        }
+      : demoSub
     : null
 
   // For lecturers, get all submissions for this assignment
@@ -484,7 +508,7 @@ export default function AssignmentDetailPage({ params }) {
               </div>
               <div className="text-center p-3 rounded-lg bg-muted/50">
                 <p className="text-lg font-bold">
-                  {studentSubmission.verificationItems?.length || 0}
+                  {studentSubmission.verificationItems?.length ?? studentSubmission.verificationItemCount ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground">Items Verified</p>
               </div>

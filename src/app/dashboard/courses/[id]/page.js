@@ -19,7 +19,7 @@ import { Progress } from "@/components/ui/progress"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { getCourseModules, getCurrentWeek } from "@/lib/demo-data"
+import { demoCourses, getCourseModules, getCurrentWeek } from "@/lib/demo-data"
 import { getCourseTemplate } from "@/lib/templates/course-templates"
 import { getStoryTemplate } from "@/lib/templates/story-templates"
 import { getRubricPreset } from "@/lib/templates/rubric-presets"
@@ -291,12 +291,12 @@ export default function CourseDetailPage({ params }) {
           const data = await res.json()
           setCourse(data.course)
         } else {
-          console.error("Failed to fetch course:", res.status)
-          setCourse(null)
+          console.warn("Course API unavailable, using demo data")
+          setCourse(demoCourses.find((c) => c.id === id) || null)
         }
       } catch (error) {
-        console.error("Failed to fetch course:", error)
-        setCourse(null)
+        console.warn("Course API unavailable, using demo data:", error.message)
+        setCourse(demoCourses.find((c) => c.id === id) || null)
       } finally {
         setLoading(false)
       }

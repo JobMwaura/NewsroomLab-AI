@@ -15,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useAuth } from "@/components/providers/auth-provider"
 import { courseTemplates, courseTemplateCodes, getCourseTemplate } from "@/lib/templates"
-import { getCourseYear, canAccessCourse } from "@/lib/demo-data"
+import { demoCourses, getCourseYear, canAccessCourse } from "@/lib/demo-data"
 import { toast } from "sonner"
 
 export default function CoursesPage() {
@@ -32,7 +32,7 @@ export default function CoursesPage() {
   const completedYears = user?.completedYears || []
   const isGraduated = !isLecturer && studentYear === 4 && completedYears.includes(1) && completedYears.includes(2) && completedYears.includes(3)
 
-  // Fetch courses from database
+  // Fetch courses from database, fall back to demo data if unavailable
   useEffect(() => {
     async function fetchCourses() {
       try {
@@ -41,12 +41,12 @@ export default function CoursesPage() {
           const data = await res.json()
           setCourses(data.courses || [])
         } else {
-          console.error("Failed to fetch courses:", res.status)
-          toast.error("Failed to load courses")
+          console.warn("Courses API unavailable, using demo data")
+          setCourses(demoCourses)
         }
       } catch (error) {
-        console.error("Failed to fetch courses:", error)
-        toast.error("Failed to load courses")
+        console.warn("Courses API unavailable, using demo data:", error.message)
+        setCourses(demoCourses)
       } finally {
         setLoading(false)
       }

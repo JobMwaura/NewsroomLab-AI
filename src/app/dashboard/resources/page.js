@@ -172,19 +172,7 @@ export default function ResourcesPage() {
     setSelectedCategory(category)
   }
 
-  // Restrict to lecturers only
-  if (!isLecturer) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <Library className="h-12 w-12 text-muted-foreground mb-4" />
-        <h2 className="text-xl font-semibold mb-2">Access Restricted</h2>
-        <p className="text-muted-foreground mb-6">The Resource Centre is available to lecturers only.</p>
-        <Button asChild variant="outline">
-          <Link href="/dashboard">← Back to Dashboard</Link>
-        </Button>
-      </div>
-    )
-  }
+  // Resources are available to all users
 
   return (
     <>

@@ -16,6 +16,7 @@ import {
   GraduationCap,
   FolderOpen,
   CheckSquare,
+  Library,
 } from "lucide-react"
 import {
   Sidebar,
@@ -39,6 +40,9 @@ const studentNav = [
   { title: "Assignments", href: "/dashboard/assignments", icon: ClipboardList },
   { title: "Editor Workspace", href: "/dashboard/editor", icon: FileEdit },
   { title: "Portfolio", href: "/dashboard/portfolio", icon: Briefcase },
+  { title: "Resources", href: "/dashboard/resources", icon: Library },
+  { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+  { title: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
 
 const lecturerNav = [
@@ -49,6 +53,7 @@ const lecturerNav = [
   { title: "Grading", href: "/dashboard/grading", icon: CheckSquare },
   { title: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
   { title: "Students", href: "/dashboard/students", icon: GraduationCap },
+  { title: "Resources", href: "/dashboard/resources", icon: Library },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
 
