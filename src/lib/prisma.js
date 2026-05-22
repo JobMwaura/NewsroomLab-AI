@@ -1,23 +1,12 @@
 // ─── Prisma Client Singleton ────────────────────────
 // Prevents multiple instances in development (hot reload).
-// Prisma 7 with PostgreSQL adapter for direct DB connection
+// Prisma 7 — connection URL is configured in prisma.config.js
 import { PrismaClient } from "@prisma/client"
-import { PrismaPg } from "@prisma/adapter-pg"
-import { Pool } from "pg"
 
 const globalForPrisma = globalThis
 
-function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL
-  const pool = new Pool({ connectionString })
-  const adapter = new PrismaPg(pool)
-  
-  return new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
-  })
-}
-
-export const prisma = globalForPrisma.prisma ?? createPrismaClient()
+export const prisma = globalForPrisma.prisma ?? new PrismaClient({
+  log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+})
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
